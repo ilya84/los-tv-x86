@@ -116,7 +116,7 @@
 | external/stagefright-plugins | `357fa2c` c2-ffmpeg seccomp |
 | external/skia | `26b1d8acb3` skcms vendor_available |
 | external/mesa3d | `e8b98813062` virtio vendor_available |
-| manifest | `6f37c8f` path device/generic/x86_64_tv |
+| manifest | `19bdda5` path device/generic/x86_64_tv; device/aaropa on ilya84 |
 
 Базовый порт (qcom/mesa/skia/av/prebuilts и др., унаследованный от
 BassOS/aaropa) в снапшот los-tv не входит; он остаётся отдельным слоем.
@@ -127,3 +127,13 @@ BassOS/aaropa) в снапшот los-tv не входит; он остаётся
 - Обновление LineageOS/патчей безопасности (апстрим).
 - Другое железо (Kabini/Haswell уже; далее — по мере появления).
 - Шифрование данных, user-сборка — позже.
+
+## Публикация
+
+- https://github.com/ilya84/los-tv-x86 — этот набор (доки, патчи, установщик)
+- https://github.com/ilya84/lineage_bass_android — манифест (ветка `lineage-23.2`)
+- https://github.com/ilya84/android_device_generic_x86_64_tv — дерево устройства
+- https://github.com/ilya84/bootable_aaropa — initrd/установщик
+
+Публичные проекты из `github.com/los-tv-x86` (alsa-utils, intel/audio,
+hcitools и т.п.) используются как read-only зависимости с атрибуцией.
