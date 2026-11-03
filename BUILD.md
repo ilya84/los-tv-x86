@@ -13,7 +13,7 @@
 
 ```sh
 mkdir -p ~/android && cd ~/android
-repo init -u https://github.com/los-tv-x86/lineage_bass_android.git -b lineage-23.2
+repo init -u https://github.com/ilya84/lineage_bass_android.git -b lineage-23.2
 repo sync -j8
 ```
 
