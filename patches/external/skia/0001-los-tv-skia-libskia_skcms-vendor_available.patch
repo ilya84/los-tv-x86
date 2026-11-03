@@ -1,0 +1,22 @@
+From 26b1d8acb387bb82d82956cae1d23d9d114ad1bb Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: skia: libskia_skcms vendor_available
+
+Change-Id: I4af71a5a74370e7206ae6d9214735fc3bc50746c
+---
+ Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Android.bp b/Android.bp
+index 2eed822b2b..c7ebb71f63 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -1135,6 +1135,7 @@ gensrcs {
+ 
+ cc_library_static {
+     name: "libskia_skcms",
++    vendor_available: true,
+     host_supported: true,
+     sdk_version: "current",
+     srcs: [

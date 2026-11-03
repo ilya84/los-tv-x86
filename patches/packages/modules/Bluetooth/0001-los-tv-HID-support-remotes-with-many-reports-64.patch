@@ -1,0 +1,46 @@
+From 8613f98ee03925e1203f0d3de6c42e5ddb48b1ce Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: HID: support remotes with many reports (64)
+
+---
+ system/bta/hh/bta_hh_int.h  | 8 +++++++-
+ system/btif/co/bta_hh_co.cc | 4 ++--
+ 2 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/system/bta/hh/bta_hh_int.h b/system/bta/hh/bta_hh_int.h
+index e78b9653bb..063cb2adbd 100644
+--- a/system/bta/hh/bta_hh_int.h
++++ b/system/bta/hh/bta_hh_int.h
+@@ -147,8 +147,14 @@ typedef struct {
+   uint16_t client_cfg_value;
+ } tBTA_HH_LE_RPT;
+ 
++/* Таблица отчётов HOGP на устройство. AOSP по умолчанию 20 — этого НЕ
++ * хватает пультам с большим числом характеристик-отчётов (например,
++ * Xiaomi RC: 26 отчётов; 18 обычных + boot-отчёт + батарея заполняют
++ * таблицу, и последняя характеристика, по которой пульт шлёт нажатия,
++ * остаётся без записи → кнопки не работают). См. scripts/apply-step29.py
++ * и STATE.md, 2026-10-17. */
+ #ifndef BTA_HH_LE_RPT_MAX
+-#define BTA_HH_LE_RPT_MAX 20
++#define BTA_HH_LE_RPT_MAX 64
+ #endif
+ 
+ enum tBTA_HH_SERVICE_STATE {
+diff --git a/system/btif/co/bta_hh_co.cc b/system/btif/co/bta_hh_co.cc
+index c8bcf99ab0..8fd8de06de 100644
+--- a/system/btif/co/bta_hh_co.cc
++++ b/system/btif/co/bta_hh_co.cc
+@@ -53,9 +53,9 @@
+ #include "osi/include/properties.h"
+ #include "storage/config_keys.h"
+ 
+-#define BTA_HH_NV_LOAD_MAX 16
++#define BTA_HH_NV_LOAD_MAX 64
+ static tBTA_HH_RPT_CACHE_ENTRY sReportCache[BTA_HH_NV_LOAD_MAX];
+-#define BTA_HH_CACHE_REPORT_VERSION 1
++#define BTA_HH_CACHE_REPORT_VERSION 2
+ #define THREAD_NORMAL_PRIORITY 0
+ #define BT_HH_THREAD_PREFIX "bt_hh_"
+ /* Max number of polling interrupt allowed */

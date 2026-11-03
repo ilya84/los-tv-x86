@@ -1,0 +1,78 @@
+From e8b988130620d0246f3ccb6ed2ff2b977d349135 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:40 +1000
+Subject: [PATCH] los-tv: mesa: vendor_available for virtio/rust modules
+
+---
+ src/gfxstream/guest/vulkan-mapper/Android.bp | 1 +
+ src/util/rust/Android.bp                     | 1 +
+ src/virtio/protocols/Android.bp              | 1 +
+ src/virtio/virtgpu_kumquat/Android.bp        | 1 +
+ src/virtio/virtgpu_kumquat_ffi/Android.bp    | 6 ++++++
+ 5 files changed, 10 insertions(+)
+
+diff --git a/src/gfxstream/guest/vulkan-mapper/Android.bp b/src/gfxstream/guest/vulkan-mapper/Android.bp
+index ef470aa9825..b97712cc259 100644
+--- a/src/gfxstream/guest/vulkan-mapper/Android.bp
++++ b/src/gfxstream/guest/vulkan-mapper/Android.bp
+@@ -21,6 +21,7 @@ package {
+ 
+ cc_library_headers {
+     name: "mesa_vulkan_mapper_headers",
++    vendor_available: true,
+     export_include_dirs: ["."],
+     host_supported: true,
+ }
+diff --git a/src/util/rust/Android.bp b/src/util/rust/Android.bp
+index ca30e27fbcd..3f83c55fcfb 100644
+--- a/src/util/rust/Android.bp
++++ b/src/util/rust/Android.bp
+@@ -21,6 +21,7 @@ package {
+ 
+ rust_library {
+     name: "libmesa3d_util",
++    vendor_available: true,
+     host_supported: true,
+     crate_name: "mesa3d_util",
+     cargo_env_compat: true,
+diff --git a/src/virtio/protocols/Android.bp b/src/virtio/protocols/Android.bp
+index a03b7aa472c..08813582978 100644
+--- a/src/virtio/protocols/Android.bp
++++ b/src/virtio/protocols/Android.bp
+@@ -21,6 +21,7 @@ package {
+ 
+ rust_library {
+     name: "libmesa3d_protocols",
++    vendor_available: true,
+     host_supported: true,
+     crate_name: "mesa3d_protocols",
+     cargo_env_compat: true,
+diff --git a/src/virtio/virtgpu_kumquat/Android.bp b/src/virtio/virtgpu_kumquat/Android.bp
+index 939fb451808..a5ae6b23237 100644
+--- a/src/virtio/virtgpu_kumquat/Android.bp
++++ b/src/virtio/virtgpu_kumquat/Android.bp
+@@ -21,6 +21,7 @@ package {
+ 
+ rust_library {
+     name: "libvirtgpu_kumquat_mesa3d",
++    vendor_available: true,
+     host_supported: true,
+     crate_name: "virtgpu_kumquat",
+     cargo_env_compat: true,
+diff --git a/src/virtio/virtgpu_kumquat_ffi/Android.bp b/src/virtio/virtgpu_kumquat_ffi/Android.bp
+index 3e2018b1243..c01aca6bf41 100644
+--- a/src/virtio/virtgpu_kumquat_ffi/Android.bp
++++ b/src/virtio/virtgpu_kumquat_ffi/Android.bp
+@@ -29,6 +29,12 @@ cc_library_headers {
+ rust_ffi_shared {
+     name: "libvirtgpu_kumquat_ffi_mesa3d",
+     crate_name: "virtgpu_kumquat_ffi",
++    rlib: {
++        enabled: false,
++    },
++    dylib: {
++        enabled: true,
++    },
+     host_supported: true,
+     vendor_available: true,
+     srcs: ["lib.rs"],

@@ -1,0 +1,236 @@
+#!/bin/bash
+# shellcheck disable=SC2086,SC2001,SC2154,SC1091
+set -e
+
+# grub-mkconfig helper script.
+# Copyright (C) 2006,2007,2008,2009  Free Software Foundation, Inc.
+#
+# GRUB is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# GRUB is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
+#
+# los-tv (2026-10-22): добавлены пункты, которые раньше жили только на
+# установленной вручную системе и терялись при переустановке:
+#   * компактное подменю Recovery (+ "ignore first eth");
+#   * ручной выбор слота A/B;
+#   * выбор разрешения экрана (TVRES/PHYSRES) + tvres.cfg/tvres-menu.cfg
+#     (файлы кладёт модуль bootcfg в <target>/boot/grub);
+#   * androidboot.tvres/androidboot.physres в строки загрузки.
+# Разбор и решения — data/2026-10-22-installer-calamares-analysis.txt.
+# ВАЖНО: «&&» в условиях этот GRUB не понимает (syntax error) — только
+# вложенные if; переменные в заголовках раскрываются только в двойных кавычках.
+
+. "$pkgdatadir/grub-mkconfig_lib"
+. /etc/default/grub
+
+export TEXTDOMAIN=grub
+export TEXTDOMAINDIR="${datarootdir}/locale"
+
+CLASS="--class blissos --class android --class os"
+OS="Android"
+TITLE="BlissOS $(grep 'ro.bliss.version=' /system/build.prop | awk -F'=' '{print $2}')"
+
+ADVANCED_ARGS=(
+	"Debug mode: DEBUG=2 androidboot.enable_console=1"
+	"No Modeset: nomodeset"
+	"No hwaccel: HWACCEL=0"
+)
+
+disk="$(prepare_grub_to_access_device "$GRUB_DEVICE")"
+
+# Extra indentation to add to menu entries in a submenu. We're not in a submenu
+# yet, so it's empty. In a submenu it will be equal to '\t' (one tab).
+ROOT_DEVICE=$GRUB_DEVICE
+ROOT_UUID=$(${grub_probe} --device "$ROOT_DEVICE" --target=fs_uuid 2>/dev/null)
+
+[ "$ROOT_UUID" ] && ROOT_DEVICE="UUID=$ROOT_UUID"
+
+# emit_entry <save|nosave> <суффикс заголовка> <суффикс id> <mode> <слот> [доп. аргументы] [dyn_title]
+#   mode: "$MODE" — из android.cfg, "recovery"/"normal" — принудительно.
+#   слот: "$SLOT" — активный, либо "_a"/"_b".
+#   dyn_title=1: заголовок пишется в двойных кавычках, чтобы GRUB раскрыл
+#   переменную (например $MODE_SUFFIX — «to SideLoad»/«to Recovery»).
+# Значения "$MODE"/"$SLOT" передаются сюда как литеральный текст (в одинарных
+# кавычках или с экранированием), чтобы в grub.cfg попали переменные GRUB.
+emit_entry() {
+	local save=$1 extra_title=$2 id_suffix=$3 mode=$4 slot=$5 extra_args=$6 dyn_title=${7:-0}
+	local entry_id="$OS-${TITLE// /_}$id_suffix"
+
+	if [ "$dyn_title" = "1" ]; then
+		# Кавычки обязательно двойные: иначе GRUB покажет "$MODE_SUFFIX"
+		# буквально. TITLE берётся из build.prop и кавычек не содержит.
+		echo "menuentry \"${TITLE}${extra_title}\" ${CLASS} \$menuentry_id_option '$entry_id' {"
+	else
+		echo "menuentry '$(echo "$TITLE$extra_title" | grub_quote)' ${CLASS} \$menuentry_id_option '$entry_id' {"
+	fi
+	{
+		if [ "$save" = "save" ]; then
+			save_default_entry
+		fi
+
+		# Use ELILO's generic "efifb" when it's known to be available.
+		# FIXME: We need an interface to select vesafb in case efifb can't be used.
+		if [ ! "$GRUB_GFXPAYLOAD_LINUX" ]; then
+			echo "load_video"
+			grep -qx "CONFIG_FB_EFI=y" "${config}" 2>/dev/null &&
+				grep -qx "CONFIG_VT_HW_CONSOLE_BINDING=y" "${config}" 2>/dev/null &&
+				echo "set gfxpayload=keep"
+
+		else
+			[ "$GRUB_GFXPAYLOAD_LINUX" = text ] ||
+				echo "load_video"
+			echo "set gfxpayload=$GRUB_GFXPAYLOAD_LINUX"
+		fi
+
+		echo "insmod gzio"
+		echo "$disk" | sed "s/^/$grub_tab/gm"
+		echo "linux $SRC/kernel$slot \$CMDLINE androidboot.mode=$mode $extra_args ROOT=$ROOT_DEVICE SRC=$SRC androidboot.slot_suffix=$slot androidboot.bootctrl_bootcfg=/boot/grub/android.cfg androidboot.tvres=\$TVRES androidboot.physres=\$PHYSRES androidboot.los_tv_kmsglog=\$KMSGLOG"
+		echo "initrd $SRC/initrd$slot.img"
+	} | grub_add_tab
+	echo "}"
+}
+
+# android.cfg is where BootCTL HAL updates current slot suffix after OTA
+cat <<'EOF'
+source $prefix/android.cfg
+export SLOT
+export CMDLINE
+export MODE
+EOF
+
+# los-tv: блок разрешения экрана — это ТЕКСТ grub.cfg, а не код генератора,
+# поэтому выводим его через quoted heredoc (переменные $TVRES/$prefix должны
+# попасть в файл буквально).
+cat <<'EOF'
+### BEGIN los-tv: базовое разрешение экрана (installer overlay 2026-10-22) ###
+# Значение по умолчанию для новой установки — 1080p/0 (безопасно для любого
+# железа); файл tvres.cfg кладёт установщик, а после загрузки его перезаписывает
+# Android (display-fixups), поэтому правки руками тоже переживают перезагрузку.
+# LOSTV_INIT — один раз за сессию: configfile из подменю перечитывает grub.cfg.
+if [ "$LOSTV_INIT" != "1" ]; then
+	set TVRES=1080p
+	set PHYSRES=0
+	if [ -f $prefix/tvres.cfg ]; then
+		source $prefix/tvres.cfg
+	fi
+	# белый список: мусор в файле молча заменяем на 1080p/0 (вложенные if!)
+	if [ "$TVRES" != "1080p" ]; then
+		if [ "$TVRES" != "720p" ]; then
+			set TVRES=1080p
+		fi
+	fi
+	if [ "$PHYSRES" != "0" ]; then
+		if [ "$PHYSRES" != "1" ]; then
+			set PHYSRES=0
+		fi
+	fi
+	set LOSTV_INIT=1
+fi
+# Пункт по умолчанию — основной (первый). saved_entry не используем: после
+# захода в подменю GRUB пишет туда вложенный «путь» и следующая загрузка
+# открывала бы подменю (баг 2026-10-19).
+set default=0
+# «вкл/выкл» для заголовка подменю — считается при каждом чтении файла.
+if [ "$PHYSRES" = "1" ]; then
+	set PHYSWORD="вкл"
+else
+	set PHYSWORD="выкл"
+fi
+export TVRES
+export PHYSRES
+export PHYSWORD
+# Kmsg log toggle: default on, persisted in grubenv by kmsglog-menu.cfg.
+if [ "$KMSGLOG" != "0" ]; then
+	set KMSGLOG=1
+fi
+if [ "$KMSGLOG" = "1" ]; then
+	set KMSWORD="вкл"
+else
+	set KMSWORD="выкл"
+fi
+export KMSGLOG
+export KMSWORD
+# export обязателен: configfile (пункт «<- назад») переживает только
+# экспортированные переменные.
+export LOSTV_INIT
+### END los-tv ###
+EOF
+
+# los-tv: заголовок основного пункта показывает, какой режим запрошен на
+# следующую загрузку. Маркеры кладёт /vendor/bin/los-tv-boot-mode.sh на
+# триггере shutdown (по значению sys.powerctl), initrd удаляет их при старте.
+# Это ТЕКСТ grub.cfg: $prefix вычисляется GRUB'ом при разборе файла.
+cat <<'EOF'
+### BEGIN los-tv: режим следующей загрузки ###
+set MODE_SUFFIX=""
+if [ -f $prefix/mode-sideload ]; then
+	set MODE_SUFFIX="(to SideLoad)"
+	set timeout=5
+	set timeout_style=menu
+fi
+if [ -f $prefix/mode-recovery ]; then
+	set MODE_SUFFIX="(to Recovery)"
+	set timeout=5
+	set timeout_style=menu
+fi
+### END los-tv ###
+EOF
+
+# los-tv: автозапуск установки проприетарных компонентов после OTA.
+# Маркер /boot/grub/addon-pending кладёт addon-autorestore.sh, если в /boot
+# есть los-tv-proprietary.tar.gz, а в системе нет Widevine/NDK translation.
+# Пункт идёт первым, поэтому при наличии маркера становится default=0.
+# ВАЖНО: это должны быть строки grub.cfg, а не shell-код генератора —
+# $prefix вычисляется уже в GRUB, при загрузке.
+echo "if [ -f \$prefix/addon-pending ]; then"
+emit_entry nosave " - Установка компонентов (авто)" "-Auto-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1"
+echo "fi"
+
+# Основной пункт — активный слот из android.cfg. Динамический заголовок:
+# «BlissOS (to SideLoad)» / «BlissOS (to Recovery)» вместо простого «BlissOS».
+emit_entry save "\$MODE_SUFFIX" "-\$SLOT" "\$MODE" "\$SLOT" "" 1
+
+# Компактное Recovery рядом с основным пунктом: stock-подменю "Recovery modes"
+# убрано (тема рисует ~6 строк, иначе пункты уезжают за экран).
+echo "submenu '$(echo "Recovery" | grub_quote)' --class recovery ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-Recovery' {"
+emit_entry nosave " - Recovery" "-Recovery-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0" | grub_add_tab
+emit_entry nosave " - Recovery (ignore first eth)" "-Recovery-ignore-first-eth-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 ignore_first_eth" | grub_add_tab
+	# los-tv: установка проприетарных компонентов (Widevine, NDK
+	# translation, Play Store) из recovery. Драйвер сам извлекает
+	# файлы из образов, ставит их в неактивный слот и перезагружает
+	# устройство (см. init.recovery.sh).
+	emit_entry nosave " - Установить проприетарные компоненты" "-Recovery-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1" | grub_add_tab
+echo "}"
+
+# Ручной выбор слота. savedefault здесь НЕ вызывается: иначе GRUB запомнил бы
+# ручной выбор и перестал по умолчанию грузить активный слот.
+echo "submenu '$(echo "Slot selection (manual)" | grub_quote)' --class submenu ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-Slot-selection' {"
+emit_entry nosave " - Boot slot A" "-Slot-A" normal "_a" "" | grub_add_tab
+emit_entry nosave " - Boot slot B" "-Slot-B" normal "_b" "" | grub_add_tab
+echo "}"
+
+# Выбор разрешения экрана. Заголовок показывает текущий выбор; кавычки
+# обязательно двойные, иначе GRUB печатает переменные буквально.
+echo "submenu \"$(echo "Разрешение экрана: \$TVRES, физ. режим: \$PHYSWORD" | grub_quote)\" --class submenu ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-Resolution' {"
+echo "	configfile \$prefix/tvres-menu.cfg"
+echo "}"
+
+# Дополнительные варианты загрузки (stock).
+echo "submenu '$(echo "Advanced options for $TITLE" | grub_quote)' --class submenu ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-Advanced' {"
+for arg in "${ADVANCED_ARGS[@]}"; do
+	emit_entry save " - ${arg%:*}" "-${arg// /_}-\$SLOT" "\$MODE" "\$SLOT" "${arg#*:}" | grub_add_tab
+done
+# kmsg log toggle (separate submenu to keep the checkbox-like UX).
+echo "	submenu \"Kmsg log: \$KMSWORD\" --class submenu ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-KmsgLog' {"
+echo "		configfile \$prefix/kmsglog-menu.cfg"
+echo "	}"
+echo "}"

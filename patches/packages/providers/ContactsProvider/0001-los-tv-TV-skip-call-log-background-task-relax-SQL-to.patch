@@ -1,0 +1,47 @@
+From afedb0a8441693d9ca5b71b657f78a9f6a5ed1e7 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: TV: skip call-log background task, relax SQL
+ tokenizer
+
+Change-Id: I2186c38a0b2d17aa9ba20a88b11b16ea04930ced
+---
+ src/com/android/providers/contacts/CallLogProvider.java       | 4 ++++
+ src/com/android/providers/contacts/util/SelectionBuilder.java | 2 +-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/com/android/providers/contacts/CallLogProvider.java b/src/com/android/providers/contacts/CallLogProvider.java
+index be8ae19c..24fe4781 100644
+--- a/src/com/android/providers/contacts/CallLogProvider.java
++++ b/src/com/android/providers/contacts/CallLogProvider.java
+@@ -1455,6 +1455,9 @@ public class CallLogProvider extends ContentProvider {
+ 
+     @VisibleForTesting
+     protected void performBackgroundTask(int task, Object arg) {
++	//no need on tv, and it cycles error every second. cutting out.
++	return;
++	/*
+         if (task == BACKGROUND_TASK_INITIALIZE) {
+             try {
+                 mDbHelper.updatePhoneAccountHandleMigrationPendingStatus();
+@@ -1490,6 +1493,7 @@ public class CallLogProvider extends ContentProvider {
+                 mDbHelper.migratePendingPhoneAccountHandles(iccId, phoneAccountHandle.getId());
+             }
+         }
++	*/
+     }
+ 
+     @Override
+diff --git a/src/com/android/providers/contacts/util/SelectionBuilder.java b/src/com/android/providers/contacts/util/SelectionBuilder.java
+index e21e2e29..acd94263 100644
+--- a/src/com/android/providers/contacts/util/SelectionBuilder.java
++++ b/src/com/android/providers/contacts/util/SelectionBuilder.java
+@@ -45,7 +45,7 @@ public class SelectionBuilder {
+      */
+     public SelectionBuilder addClause(String clause) {
+         if (!TextUtils.isEmpty(clause)) {
+-            SQLiteTokenizer.tokenize(clause, SQLiteTokenizer.OPTION_CHECK_BRACKETS, null);
++            SQLiteTokenizer.tokenize(clause, 0, (token) -> {});
+             mWhereClauses.add(clause);
+         }
+         return this;

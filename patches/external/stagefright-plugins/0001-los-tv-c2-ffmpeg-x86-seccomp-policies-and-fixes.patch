@@ -1,0 +1,156 @@
+From 357fa2c1563c3113b5761fd0ea48f3b50dbd534f Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: c2-ffmpeg: x86 seccomp policies and fixes
+
+---
+ codec2/Android.mk                             |  2 +-
+ codec2/C2FFMPEGVideoDecodeComponent.cpp       | 50 ++++++++++++++++---
+ codec2/C2FFMPEGVideoUtils.cpp                 |  4 +-
+ ...ndroid.hardware.media.c2-ffmpeg-x86.policy |  1 +
+ ...oid.hardware.media.c2-ffmpeg-x86_64.policy |  1 +
+ 5 files changed, 48 insertions(+), 10 deletions(-)
+
+diff --git a/codec2/Android.mk b/codec2/Android.mk
+index 0023d9d..14f768e 100644
+--- a/codec2/Android.mk
++++ b/codec2/Android.mk
+@@ -59,7 +59,7 @@ LOCAL_SHARED_LIBRARIES += libva
+ endif
+ # TODO: Remove when flag is added by AOSP (maybe Android 15+?)
+ LOCAL_CFLAGS += -Wno-deprecated-enum-enum-conversion
+-LOCAL_C_INCLUDES += external/minigbm
++LOCAL_C_INCLUDES += external/minigbm external/libdrm/android
+ include $(BUILD_EXECUTABLE)
+ 
+ include $(CLEAR_VARS)
+diff --git a/codec2/C2FFMPEGVideoDecodeComponent.cpp b/codec2/C2FFMPEGVideoDecodeComponent.cpp
+index f82c72e..82a5f6c 100644
+--- a/codec2/C2FFMPEGVideoDecodeComponent.cpp
++++ b/codec2/C2FFMPEGVideoDecodeComponent.cpp
+@@ -33,6 +33,7 @@ extern "C" {
+ #include <libavutil/pixdesc.h>
+ }
+ #include <cros_gralloc/cros_gralloc_handle.h>
++#include <gralloc_handle.h>
+ #ifdef CONFIG_VAAPI
+ #include <C2AllocatorGralloc.h>
+ extern "C" {
+@@ -572,10 +573,27 @@ int C2FFMPEGVideoDecodeComponent::vaapi_vpp_convert(AVFrame *src, AVFrame *dst)
+     }
+ 
+     // 5. Execute Blit
++    // The decoder surface may still be in flight when avcodec_receive_frame()
++    // returns.  Wait for it before VPP reads it.
++    vas = vaSyncSurface(display, src_surface);
++    if (vas != VA_STATUS_SUCCESS) {
++        ALOGE("VPP: vaSyncSurface(src=%#x) failed: %x", src_surface, vas);
++        return AVERROR_EXTERNAL;
++    }
+     vas = vaBeginPicture(display, mVppContextId, dst_surface);
+     if (vas == VA_STATUS_SUCCESS) {
+         vaRenderPicture(display, mVppContextId, &pipeline_buf, 1);
+         vas = vaEndPicture(display, mVppContextId);
++        // vaEndPicture only submits the job.  The destination is handed to
++        // SurfaceFlinger/HWC immediately afterwards, so wait for the GPU to
++        // finish writing the RGB surface.  Without this the composer can scan
++        // out a partially written buffer (moving black tiles / stale pixels).
++        if (vas == VA_STATUS_SUCCESS) {
++            vas = vaSyncSurface(display, dst_surface);
++            if (vas != VA_STATUS_SUCCESS) {
++                ALOGE("VPP: vaSyncSurface failed: %x", vas);
++            }
++        }
+     }
+ 
+     // 6. Cleanup Per-Frame Resources
+@@ -1518,24 +1536,42 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
+ 
+             bool isYUV = (currentPixelFormat == HAL_PIXEL_FORMAT_YV12);
+ 
+-            // gbm does not support YUV, so always assume linear buffer
+-            descriptor.objects[0].drm_format_modifier = 0;
++            // gbm_gralloc exposes the real modifier and byte stride in the
++            // native gralloc handle.  Using desc.stride * bpp and modifier 0
++            // only works for linear buffers; tiled gbm buffers produced VPP
++            // artifacts and left stale pixels from the previous frame.
++            const struct gralloc_handle_t *gh =
++                reinterpret_cast<const struct gralloc_handle_t *>(block->handle());
++            uint64_t modifier = 0;
++            uint32_t byteStride = desc.stride * bpp;
++            if (gh != nullptr && gh->magic == GRALLOC_HANDLE_MAGIC) {
++                modifier = gh->modifier;
++                // DRM_FORMAT_MOD_INVALID must not be passed to VA-API.
++                if (modifier == ((1ULL << 56) - 1)) modifier = 0;
++                byteStride = gh->stride;
++            }
++
++            descriptor.objects[0].drm_format_modifier = modifier;
+             descriptor.objects[0].fd = bufferPrimeFd;
+             descriptor.objects[0].size = isYUV ?
+-                descriptor.layers[0].offset[1] + desc.stride * ALIGN(desc.height / 2, 32) :
+-                desc.stride * desc.height * bpp; // Multiply by bpp
++                descriptor.layers[0].offset[1] + byteStride * ALIGN(desc.height / 2, 32) :
++                byteStride * desc.height;
+ 
+             descriptor.layers[0].drm_format = mUtils->getDRMFOURCCFormat();
+             descriptor.layers[0].num_planes = isYUV ? 2 : 1;
+ 
+-            descriptor.layers[0].pitch[0] = desc.stride * bpp;
+-            descriptor.layers[0].pitch[1] = isYUV ? desc.stride : 0;
++            descriptor.layers[0].pitch[0] = byteStride;
++            descriptor.layers[0].pitch[1] = isYUV ? byteStride : 0;
+             descriptor.layers[0].pitch[2] = 0;
+             descriptor.layers[0].pitch[3] = 0;
+             descriptor.layers[0].offset[0] = 0;
+-            descriptor.layers[0].offset[1] = isYUV ? desc.stride * ALIGN(desc.height, 32) : 0;
++            descriptor.layers[0].offset[1] = isYUV ? byteStride * ALIGN(desc.height, 32) : 0;
+             descriptor.layers[0].offset[2] = 0;
+             descriptor.layers[0].offset[3] = 0;
++
++            ALOGD("getBufferVAAPI: gbm %dx%d stride=%u modifier=%#" PRIx64 " fmt=%#x",
++                  mSurfaceWidth, mSurfaceHeight, byteStride, modifier,
++                  descriptor.layers[0].drm_format);
+         }
+ 
+         vas = vaCreateSurfaces(hwctx->display, mUtils->getVAFormat(),
+diff --git a/codec2/C2FFMPEGVideoUtils.cpp b/codec2/C2FFMPEGVideoUtils.cpp
+index f922cbb..4d40d28 100644
+--- a/codec2/C2FFMPEGVideoUtils.cpp
++++ b/codec2/C2FFMPEGVideoUtils.cpp
+@@ -100,9 +100,9 @@ uint32_t C2FFMPEGVideoUtils::getDRMFOURCCFormat() const {
+         case PixelFormatType::RGB_565:
+             return DRM_FORMAT_RGB565;
+         case PixelFormatType::RGBX_8888:
+-            return DRM_FORMAT_RGBX8888;
++            return DRM_FORMAT_XBGR8888;
+         case PixelFormatType::BGRA_8888:
+-            return DRM_FORMAT_BGRA8888;
++            return DRM_FORMAT_ARGB8888;
+         case PixelFormatType::UNKNOWN:
+         default:
+             break;
+diff --git a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy b/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy
+index 176f7a3..c8c4473 100644
+--- a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy
++++ b/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy
+@@ -70,6 +70,7 @@ gettid: 1
+ 
+ # Required fy FFMPEG
+ sched_getaffinity: 1
++sched_setaffinity: 1
+ kcmp: 1
+ sysinfo: 1
+ mkdirat: 1
+diff --git a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86_64.policy b/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86_64.policy
+index 5d6b2b7..efe33a9 100644
+--- a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86_64.policy
++++ b/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86_64.policy
+@@ -70,6 +70,7 @@ gettid: 1
+ 
+ # Required fy FFMPEG
+ sched_getaffinity: 1
++sched_setaffinity: 1
+ kcmp: 1
+ sysinfo: 1
+ mkdirat: 1

@@ -1,0 +1,18 @@
+From 18fe860a4b3eb79148a14077345d045b68868e8e Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: gmscore_app: drop apk_verity_prop access
+
+Change-Id: I5c261cbd05d7dbfaf706345732aebbefa0849647
+---
+ atv/vendor/gmscore_app.te | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/atv/vendor/gmscore_app.te b/atv/vendor/gmscore_app.te
+index 3b2c9f3..f273fbb 100644
+--- a/atv/vendor/gmscore_app.te
++++ b/atv/vendor/gmscore_app.te
+@@ -1,2 +1,2 @@
+ get_prop(gmscore_app, apexd_prop)
+-get_prop(gmscore_app, apk_verity_prop)
++# get_prop(gmscore_app, apk_verity_prop)

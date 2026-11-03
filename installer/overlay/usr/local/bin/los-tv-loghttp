@@ -1,0 +1,31 @@
+#!/bin/sh
+# los-tv: read-only HTTP access to installer logs (diagnostics only).
+# Started from /etc/xdg/autostart/los-tv-loghttp.desktop in the live session.
+#
+#   http://<installer-ip>:8080/                 — Calamares session.log и пр.
+#   http://<installer-ip>:8080/los-tv-diag/     — dmesg, lsblk, partitions, Xorg
+#
+# Ничего не пишет в систему, кроме своего каталога и /tmp/los-tv-loghttp.log.
+
+LOGDIR="${HOME:-/root}/.cache/calamares"
+if ! mkdir -p "$LOGDIR/los-tv-diag" 2>/dev/null; then
+    LOGDIR=/tmp
+    mkdir -p "$LOGDIR/los-tv-diag" 2>/dev/null
+fi
+
+# Периодически обновляем снимки диагностики, чтобы их можно было забрать
+# по HTTP, не трогая live-систему.
+(
+    while :; do
+        dmesg > "$LOGDIR/los-tv-diag/dmesg.txt" 2>/dev/null
+        lsblk -a -o NAME,MAJ:MIN,RM,SIZE,RO,TYPE,FSTYPE,MOUNTPOINTS,MODEL,TRAN \
+            > "$LOGDIR/los-tv-diag/lsblk.txt" 2>/dev/null
+        cat /proc/partitions > "$LOGDIR/los-tv-diag/partitions.txt" 2>/dev/null
+        cp -f /var/log/Xorg.0.log "$LOGDIR/los-tv-diag/Xorg.0.log" 2>/dev/null
+        cp -f /var/log/calamares.log "$LOGDIR/los-tv-diag/calamares.log" 2>/dev/null
+        sleep 5
+    done
+) &
+
+exec /usr/bin/python3 -m http.server 8080 --bind 0.0.0.0 --directory "$LOGDIR" \
+    >/tmp/los-tv-loghttp.log 2>&1

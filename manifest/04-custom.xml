@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!-- Initrd & installer -->
+  <project path="bootable/aaropa" name="bootable_aaropa" remote="los-tv-x86" />
+
+  <project path="external/libburn" name="external_libburn" remote="ag-github" revision="11-x86" />
+  <project path="external/libisofs" name="external_libisofs" remote="ag-github" revision="11-x86" />
+  <project path="external/libisoburn" name="external_libisoburn" remote="ag-github" revision="11-x86" />
+
+  <!-- Device tree -->
+  <project path="device/generic/x86_64_tv" name="android_device_generic_x86_64_tablet" remote="los-tv-x86" sync-s="true" />
+
+</manifest>

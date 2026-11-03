@@ -1,0 +1,496 @@
+From e64eb02646b7a3df11a6d4c1198759d5359edc01 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: TV settings: x86 display/resolution/network defaults
+
+---
+ .../connectivity/EditIpSettingsActivity.java  |   8 ++
+ .../EditProxySettingsActivity.java            |   6 +
+ .../settings/connectivity/EthernetConfig.java |   4 +-
+ .../connectivity/NetworkDefaults.java         | 136 ++++++++++++++++++
+ .../setup/AdvancedOptionsFlowInfo.java        |  53 +++++++
+ .../connectivity/setup/Dns1State.java         |   4 +-
+ .../connectivity/setup/Dns2State.java         |   4 +-
+ .../connectivity/setup/GatewayState.java      |   4 +-
+ .../connectivity/setup/IpAddressState.java    |   4 +-
+ .../setup/NetworkPrefixLengthState.java       |   4 +-
+ .../connectivity/setup/ProxyBypassState.java  |   4 +-
+ .../setup/ProxyHostNameState.java             |   4 +-
+ .../connectivity/setup/ProxyPortState.java    |   4 +-
+ .../display/daydream/DaydreamFragment.java    |  16 +++
+ .../ResolutionSelectionFragment.java          |  13 ++
+ 15 files changed, 251 insertions(+), 17 deletions(-)
+ create mode 100644 Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
+
+diff --git a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java b/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java
+index 5814c6b1f..7e3df98c4 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java
++++ b/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java
+@@ -32,6 +32,7 @@ import com.android.settingslib.RestrictedLockUtils;
+ import com.android.settingslib.RestrictedLockUtils.EnforcedAdmin;
+ import com.android.settingslib.RestrictedLockUtilsInternal;
+ import com.android.tv.settings.R;
++import com.android.tv.settings.connectivity.setup.AdvancedOptionsFlowInfo;
+ import com.android.tv.settings.connectivity.setup.AdvancedWifiOptionsFlow;
+ import com.android.tv.settings.connectivity.util.State;
+ import com.android.tv.settings.connectivity.util.StateMachine;
+@@ -121,6 +122,12 @@ public class EditIpSettingsActivity extends InstrumentedActivity implements
+         AdvancedWifiOptionsFlow.createFlow(this, false, true, netConfig,
+                 null, mSaveState, AdvancedWifiOptionsFlow.START_IP_SETTINGS_PAGE);
+ 
++        // DHCP configurations carry no static values; use the live lease as the
++        // default text of the address/prefix/gateway/DNS screens.
++        final AdvancedOptionsFlowInfo flowInfo =
++                ViewModelProviders.of(this).get(AdvancedOptionsFlowInfo.class);
++        NetworkDefaults.apply(this, flowInfo, netConfig, networkId);
++
+         /* Save */
+         mStateMachine.addState(
+                 mSaveState,
+@@ -138,6 +145,7 @@ public class EditIpSettingsActivity extends InstrumentedActivity implements
+ 
+ 
+ 
++
+     @Override
+     public void onBackPressed() {
+         mStateMachine.back();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/EditProxySettingsActivity.java b/Settings/src/com/android/tv/settings/connectivity/EditProxySettingsActivity.java
+index 34adc5c47..d58d5df58 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/EditProxySettingsActivity.java
++++ b/Settings/src/com/android/tv/settings/connectivity/EditProxySettingsActivity.java
+@@ -32,6 +32,7 @@ import com.android.settingslib.RestrictedLockUtils;
+ import com.android.settingslib.RestrictedLockUtils.EnforcedAdmin;
+ import com.android.settingslib.RestrictedLockUtilsInternal;
+ import com.android.tv.settings.R;
++import com.android.tv.settings.connectivity.setup.AdvancedOptionsFlowInfo;
+ import com.android.tv.settings.connectivity.setup.AdvancedWifiOptionsFlow;
+ import com.android.tv.settings.connectivity.util.State;
+ import com.android.tv.settings.connectivity.util.StateMachine;
+@@ -120,6 +121,10 @@ public class EditProxySettingsActivity extends InstrumentedActivity implements
+         editSettingsInfo.setNetworkConfiguration(netConfig);
+         AdvancedWifiOptionsFlow.createFlow(this, false, true, netConfig,
+                 null, mSaveState, AdvancedWifiOptionsFlow.START_PROXY_SETTINGS_PAGE);
++        // Prefill the proxy fields with the proxy that is currently in use (if any).
++        final AdvancedOptionsFlowInfo flowInfo =
++                ViewModelProviders.of(this).get(AdvancedOptionsFlowInfo.class);
++        NetworkDefaults.apply(this, flowInfo, netConfig, networkId);
+ 
+         /* Save */
+         mStateMachine.addState(
+@@ -135,6 +140,7 @@ public class EditProxySettingsActivity extends InstrumentedActivity implements
+         mStateMachine.start(true);
+     }
+ 
++
+     @Override
+     public void onBackPressed() {
+         mStateMachine.back();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/EthernetConfig.java b/Settings/src/com/android/tv/settings/connectivity/EthernetConfig.java
+index a6b3d0f78..9a1c528a1 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/EthernetConfig.java
++++ b/Settings/src/com/android/tv/settings/connectivity/EthernetConfig.java
+@@ -35,7 +35,9 @@ class EthernetConfig implements NetworkConfiguration {
+ 
+     EthernetConfig(Context context, String iface, IpConfiguration initialConfig) {
+         mEthernetManager = (EthernetManager) context.getSystemService(Context.ETHERNET_SERVICE);
+-        mIpConfiguration = initialConfig;
++        // An empty configuration is not the same as no configuration: the advanced
++        // screens dereference it, and a null here used to crash the IP settings page.
++        mIpConfiguration = initialConfig != null ? initialConfig : new IpConfiguration();
+         mInterfaceName = iface;
+         mName = context.getResources().getString(R.string.connectivity_ethernet);
+     }
+diff --git a/Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java b/Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
+new file mode 100644
+index 000000000..cc402ef5f
+--- /dev/null
++++ b/Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
+@@ -0,0 +1,136 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.tv.settings.connectivity;
++
++import android.content.Context;
++import android.net.ConnectivityManager;
++import android.net.LinkAddress;
++import android.net.LinkProperties;
++import android.net.Network;
++import android.net.NetworkCapabilities;
++import android.net.ProxyInfo;
++import android.net.RouteInfo;
++import android.net.wifi.WifiInfo;
++import android.net.wifi.WifiManager;
++
++import com.android.tv.settings.connectivity.setup.AdvancedOptionsFlowInfo;
++
++import java.net.Inet4Address;
++import java.net.InetAddress;
++
++/**
++ * Fills the "default" values of the advanced IP settings screens with the values the network
++ * is actually using right now.
++ *
++ * <p>When a network runs on DHCP its {@link android.net.IpConfiguration} carries no
++ * {@link android.net.StaticIpConfiguration}, so the IP/prefix/gateway/DNS screens used to fall
++ * back to the example addresses hardcoded in the resources. Mobile settings instead show the
++ * current lease, and this class brings the same behaviour to TV settings.</p>
++ */
++final class NetworkDefaults {
++    private NetworkDefaults() {
++    }
++
++    /**
++     * Stores the live address/gateway/DNS of the network being edited in the flow, so the
++     * screens can use them when the saved configuration has no static values.
++     */
++    static void apply(Context context, AdvancedOptionsFlowInfo info, NetworkConfiguration config,
++            int networkId) {
++        final boolean ethernet = config instanceof EthernetConfig;
++        if (!ethernet) {
++            // Only use the live values when we are editing the network we are connected to;
++            // otherwise they would belong to a different network.
++            final WifiManager wifiManager = context.getSystemService(WifiManager.class);
++            final WifiInfo wifiInfo = wifiManager == null ? null : wifiManager.getConnectionInfo();
++            if (wifiInfo == null || wifiInfo.getNetworkId() != networkId) {
++                return;
++            }
++        }
++
++        final ConnectivityManager connectivityManager =
++                context.getSystemService(ConnectivityManager.class);
++        if (connectivityManager == null) {
++            return;
++        }
++
++        LinkProperties best = null;
++        for (Network network : connectivityManager.getAllNetworks()) {
++            final NetworkCapabilities capabilities =
++                    connectivityManager.getNetworkCapabilities(network);
++            if (capabilities == null
++                    || !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
++                continue;
++            }
++            final boolean matches = ethernet
++                    ? capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
++                    : capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
++            if (!matches) {
++                continue;
++            }
++            final LinkProperties linkProperties =
++                    connectivityManager.getLinkProperties(network);
++            if (linkProperties == null) {
++                continue;
++            }
++            // Prefer a network that is fully configured with an IPv4 address.
++            if (best == null || (hasIpv4Address(linkProperties) && !hasIpv4Address(best))) {
++                best = linkProperties;
++            }
++        }
++        if (best == null) {
++            return;
++        }
++
++        LinkAddress address = null;
++        for (LinkAddress linkAddress : best.getLinkAddresses()) {
++            if (linkAddress.getAddress() instanceof Inet4Address) {
++                address = linkAddress;
++                break;
++            }
++        }
++
++        InetAddress gateway = null;
++        for (RouteInfo route : best.getRoutes()) {
++            if (route.isDefaultRoute() && route.getGateway() instanceof Inet4Address) {
++                gateway = route.getGateway();
++                break;
++            }
++        }
++
++        info.setFallbackNetworkInfo(address, gateway, best.getDnsServers(),
++                hostBasedProxy(best.getHttpProxy()));
++    }
++
++    /** The proxy screens can only edit a host/port proxy, not a PAC script. */
++    private static ProxyInfo hostBasedProxy(ProxyInfo proxyInfo) {
++        if (proxyInfo == null || proxyInfo.getPacFileUrl() != null
++                || proxyInfo.getHost() == null) {
++            return null;
++        }
++        return proxyInfo;
++    }
++
++    private static boolean hasIpv4Address(LinkProperties linkProperties) {
++        for (LinkAddress linkAddress : linkProperties.getLinkAddresses()) {
++            if (linkAddress.getAddress() instanceof Inet4Address) {
++                return true;
++            }
++        }
++        return false;
++    }
++}
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/AdvancedOptionsFlowInfo.java b/Settings/src/com/android/tv/settings/connectivity/setup/AdvancedOptionsFlowInfo.java
+index 9d01c58ba..dbb7ccc13 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/AdvancedOptionsFlowInfo.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/AdvancedOptionsFlowInfo.java
+@@ -199,6 +199,59 @@ public class AdvancedOptionsFlowInfo extends ViewModel {
+         }
+     }
+ 
++    private LinkAddress mFallbackLinkAddress;
++    private ProxyInfo mFallbackProxyInfo;
++    private InetAddress mFallbackGateway;
++    private java.util.List<InetAddress> mFallbackDns = java.util.Collections.emptyList();
++
++    /**
++     * Store the values the network is currently using (for example the active DHCP lease).
++     * They are only used when the saved configuration has no static values of its own.
++     */
++    public void setFallbackNetworkInfo(LinkAddress linkAddress, InetAddress gateway,
++            java.util.List<InetAddress> dnsServers, ProxyInfo proxyInfo) {
++        mFallbackLinkAddress = linkAddress;
++        mFallbackGateway = gateway;
++        mFallbackDns = dnsServers == null
++                ? java.util.Collections.emptyList() : dnsServers;
++        mFallbackProxyInfo = proxyInfo;
++    }
++
++    /**
++     * Address to prefill: the configured static one, otherwise the live address.
++     */
++    public LinkAddress getDefaultLinkAddress() {
++        final LinkAddress linkAddress = getInitialLinkAddress();
++        return linkAddress != null ? linkAddress : mFallbackLinkAddress;
++    }
++
++    /**
++     * Gateway to prefill: the configured static one, otherwise the live gateway.
++     */
++    public InetAddress getDefaultGateway() {
++        final InetAddress gateway = getInitialGateway();
++        return gateway != null ? gateway : mFallbackGateway;
++    }
++
++    /**
++     * DNS server to prefill: the configured static one, otherwise the live one.
++     */
++    public InetAddress getDefaultDns(int index) {
++        final InetAddress dns = getInitialDns(index);
++        if (dns != null) {
++            return dns;
++        }
++        return index < mFallbackDns.size() ? mFallbackDns.get(index) : null;
++    }
++
++    /**
++     * Proxy to prefill: the configured one, otherwise the proxy currently in use.
++     */
++    public ProxyInfo getDefaultProxyInfo() {
++        final ProxyInfo proxyInfo = getInitialProxyInfo();
++        return proxyInfo != null ? proxyInfo : mFallbackProxyInfo;
++    }
++
+     /**
+      * Get the initial proxy info.
+      */
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/Dns1State.java b/Settings/src/com/android/tv/settings/connectivity/setup/Dns1State.java
+index be716f355..50b7d5f65 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/Dns1State.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/Dns1State.java
+@@ -112,8 +112,8 @@ public class Dns1State implements State {
+             String title = getString(R.string.wifi_dns1_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.DNS1)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.DNS1);
+-            } else if (mAdvancedOptionsFlowInfo.getInitialDns(0) != null) {
+-                title = mAdvancedOptionsFlowInfo.getInitialDns(0).getHostAddress();
++            } else if (mAdvancedOptionsFlowInfo.getDefaultDns(0) != null) {
++                title = mAdvancedOptionsFlowInfo.getDefaultDns(0).getHostAddress();
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/Dns2State.java b/Settings/src/com/android/tv/settings/connectivity/setup/Dns2State.java
+index 614f61341..40b6977c1 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/Dns2State.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/Dns2State.java
+@@ -111,8 +111,8 @@ public class Dns2State implements State {
+             String title = getString(R.string.wifi_dns2_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.DNS2)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.DNS2);
+-            } else if (mAdvancedOptionsFlowInfo.getInitialDns(1) != null) {
+-                title = mAdvancedOptionsFlowInfo.getInitialDns(1).getHostAddress();
++            } else if (mAdvancedOptionsFlowInfo.getDefaultDns(1) != null) {
++                title = mAdvancedOptionsFlowInfo.getDefaultDns(1).getHostAddress();
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/GatewayState.java b/Settings/src/com/android/tv/settings/connectivity/setup/GatewayState.java
+index 4c4c10347..2a1084b8d 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/GatewayState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/GatewayState.java
+@@ -113,8 +113,8 @@ public class GatewayState implements State {
+             String title = getString(R.string.wifi_gateway_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.GATEWAY)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.GATEWAY);
+-            } else if (mAdvancedOptionsFlowInfo.getInitialGateway() != null) {
+-                title = mAdvancedOptionsFlowInfo.getInitialGateway().getHostAddress();
++            } else if (mAdvancedOptionsFlowInfo.getDefaultGateway() != null) {
++                title = mAdvancedOptionsFlowInfo.getDefaultGateway().getHostAddress();
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/IpAddressState.java b/Settings/src/com/android/tv/settings/connectivity/setup/IpAddressState.java
+index e8e0173d7..6f859b6bd 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/IpAddressState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/IpAddressState.java
+@@ -111,8 +111,8 @@ public class IpAddressState implements State {
+             String title = getString(R.string.wifi_ip_address_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.IP_ADDRESS)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.IP_ADDRESS);
+-            } else if (mAdvancedOptionsFlowInfo.getInitialLinkAddress() != null) {
+-                title = mAdvancedOptionsFlowInfo.getInitialLinkAddress()
++            } else if (mAdvancedOptionsFlowInfo.getDefaultLinkAddress() != null) {
++                title = mAdvancedOptionsFlowInfo.getDefaultLinkAddress()
+                             .getAddress().getHostAddress();
+             }
+ 
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/NetworkPrefixLengthState.java b/Settings/src/com/android/tv/settings/connectivity/setup/NetworkPrefixLengthState.java
+index 6377812fa..f8b1abe46 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/NetworkPrefixLengthState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/NetworkPrefixLengthState.java
+@@ -110,9 +110,9 @@ public class NetworkPrefixLengthState implements State {
+             if (mAdvancedOptionsFlowInfo
+                         .containsPage(AdvancedOptionsFlowInfo.NETWORK_PREFIX_LENGTH)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.NETWORK_PREFIX_LENGTH);
+-            } else if (mAdvancedOptionsFlowInfo.getInitialLinkAddress() != null) {
++            } else if (mAdvancedOptionsFlowInfo.getDefaultLinkAddress() != null) {
+                 title =  Integer.toString(
+-                        mAdvancedOptionsFlowInfo.getInitialLinkAddress().getPrefixLength());
++                        mAdvancedOptionsFlowInfo.getDefaultLinkAddress().getPrefixLength());
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyBypassState.java b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyBypassState.java
+index cc53c1248..f9b09789c 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyBypassState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyBypassState.java
+@@ -111,9 +111,9 @@ public class ProxyBypassState implements State {
+             String title = getString(R.string.proxy_exclusionlist_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.PROXY_BYPASS)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.PROXY_BYPASS);
+-            }  else if (mAdvancedOptionsFlowInfo.getInitialProxyInfo() != null) {
++            }  else if (mAdvancedOptionsFlowInfo.getDefaultProxyInfo() != null) {
+                 title = ProxyUtils.exclusionListAsString(
+-                        mAdvancedOptionsFlowInfo.getInitialProxyInfo().getExclusionList());
++                        mAdvancedOptionsFlowInfo.getDefaultProxyInfo().getExclusionList());
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyHostNameState.java b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyHostNameState.java
+index 8a46dd042..78498f23d 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyHostNameState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyHostNameState.java
+@@ -109,8 +109,8 @@ public class ProxyHostNameState implements State {
+             String title = getString(R.string.proxy_hostname_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.PROXY_HOSTNAME)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.PROXY_HOSTNAME);
+-            }  else if (mAdvancedOptionsFlowInfo.getInitialProxyInfo() != null) {
+-                title = mAdvancedOptionsFlowInfo.getInitialProxyInfo().getHost();
++            }  else if (mAdvancedOptionsFlowInfo.getDefaultProxyInfo() != null) {
++                title = mAdvancedOptionsFlowInfo.getDefaultProxyInfo().getHost();
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyPortState.java b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyPortState.java
+index 1dc2b6a3b..459147d5e 100644
+--- a/Settings/src/com/android/tv/settings/connectivity/setup/ProxyPortState.java
++++ b/Settings/src/com/android/tv/settings/connectivity/setup/ProxyPortState.java
+@@ -106,8 +106,8 @@ public class ProxyPortState implements State {
+             String title = getString(R.string.proxy_port_hint);
+             if (mAdvancedOptionsFlowInfo.containsPage(AdvancedOptionsFlowInfo.PROXY_PORT)) {
+                 title = mAdvancedOptionsFlowInfo.get(AdvancedOptionsFlowInfo.PROXY_PORT);
+-            }  else if (mAdvancedOptionsFlowInfo.getInitialProxyInfo() != null) {
+-                title = Integer.toString(mAdvancedOptionsFlowInfo.getInitialProxyInfo().getPort());
++            }  else if (mAdvancedOptionsFlowInfo.getDefaultProxyInfo() != null) {
++                title = Integer.toString(mAdvancedOptionsFlowInfo.getDefaultProxyInfo().getPort());
+             }
+ 
+             Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java b/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java
+index e4f3493ff..8c437026a 100644
+--- a/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java
++++ b/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java
+@@ -94,6 +94,7 @@ public class DaydreamFragment extends SettingsPreferenceFragment
+     public void onResume() {
+         super.onResume();
+         refreshFromBackend();
++        ensureDreamActivationForTv();
+ 
+         // listen for package changes
+         IntentFilter filter = new IntentFilter();
+@@ -151,6 +152,18 @@ public class DaydreamFragment extends SettingsPreferenceFragment
+         updateAmbientSettings();
+     }
+ 
++    /**
++     * los-tv: if a screensaver is enabled, make sure the framework will activate
++     * it when the device goes to sleep. Existing installs may have
++     * SCREENSAVER_ACTIVATE_ON_SLEEP=0, which only allows dreaming on a dock.
++     */
++    private void ensureDreamActivationForTv() {
++        if (mBackend.isEnabled() && mBackend.getActiveDream() != null
++                && !mBackend.isActivatedOnSleep()) {
++            mBackend.setActivatedOnSleep(true);
++        }
++    }
++
+     private void refreshActiveDreamPref() {
+         if (mActiveDreamPref == null) {
+             return;
+@@ -212,6 +225,9 @@ public class DaydreamFragment extends SettingsPreferenceFragment
+             if (!mBackend.isEnabled()) {
+                 mBackend.setEnabled(true);
+             }
++            // los-tv: TVs have no dock. Without this the framework only dreams
++            // when docked, so the screensaver never starts after the timeout.
++            mBackend.setActivatedOnSleep(true);
+             if (!Objects.equals(mBackend.getActiveDream(), dreamInfo.componentName)) {
+                 mBackend.setActiveDream(dreamInfo.componentName);
+             }
+diff --git a/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java b/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java
+index fcc0cdf9f..1c5472f28 100644
+--- a/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java
++++ b/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java
+@@ -149,6 +149,19 @@ public class ResolutionSelectionFragment extends PreferenceControllerFragment {
+ 
+         Display display = mDisplayManager.getDisplay(Display.DEFAULT_DISPLAY);
+         mAutoMode = display.getSystemPreferredDisplayMode();
++        if (mAutoMode == null) {
++            // los-tv: some devices (HWC without a system-preferred mode) return null here.
++            // Without a fallback the "Auto" entry below NPEs on mAutoMode.
++            Log.w(TAG, "No system preferred display mode; falling back to current mode");
++            mAutoMode = display.getMode();
++        }
++        if (mAutoMode == null && mModes.length > 0) {
++            mAutoMode = mModes[0];
++        }
++        if (mAutoMode == null) {
++            Log.w(TAG, "No display modes reported; skipping resolution list");
++            return;
++        }
+         final String summary = getResources().getString(R.string.resolution_display_mode,
+                 ResolutionSelectionUtils.getResolutionString(
+                         mAutoMode.getPhysicalWidth(), mAutoMode.getPhysicalHeight()),

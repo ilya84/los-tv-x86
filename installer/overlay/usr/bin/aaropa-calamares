@@ -1,0 +1,29 @@
+#!/bin/sh
+# los-tv: образ поддерживает только GRUB.
+#
+# Штатный BlissOS-враппер показывал zenity-диалог "Specify bootloader to
+# continue" (GRUB / rEFInd / None) и переписывал efiBootLoader в
+# bootloader.conf. rEFInd и None мы не поддерживаем: меню «Разрешение
+# экрана», Recovery/слоты, переключатель kmsg-лога, android.cfg и
+# 10_blissos существуют только для GRUB. Поэтому выбор убран, всегда GRUB.
+#
+# Совместимость: старый вызов `aaropa-calamares [grub|refind|none] [args]`
+# принимается, но аргумент загрузчика игнорируется; остальные аргументы
+# (например, -d) передаются calamares.
+
+case "$1" in
+grub | refind | none) shift ;;
+esac
+
+export BOOTLOADER=grub
+
+# На случай, если в live-образе bootloader.conf уже был переписан на
+# refind/none (например, прошлым запуском старого враппера).
+for path in /usr/share /etc; do
+	conf=$path/calamares/modules/bootloader.conf
+	if [ -f "$conf" ]; then
+		sed -i -r 's/efiBootLoader: .+/efiBootLoader: "grub"/g' "$conf"
+	fi
+done
+
+exec calamares "$@"

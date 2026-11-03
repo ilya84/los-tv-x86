@@ -1,0 +1,36 @@
+From 414d11539f7f996bcfe785d907bcc7c0d95ae8d2 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: apexd: longer wait for /dev/loop-control
+
+---
+ apexd/apexd.cpp      | 2 +-
+ apexd/apexd_loop.cpp | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/apexd/apexd.cpp b/apexd/apexd.cpp
+index 3a877ac2..07eacd3a 100644
+--- a/apexd/apexd.cpp
++++ b/apexd/apexd.cpp
+@@ -3213,7 +3213,7 @@ Result<int> AddBlockApex(ApexFileRepository& instance) {
+ // - ActivateApexPackages
+ // - setprop apexd.status: activated/ready
+ int OnStartInVmMode() {
+-  Result<void> loop_ready = WaitForFile("/dev/loop-control", 20s);
++  Result<void> loop_ready = WaitForFile("/dev/loop-control", 600s);
+   if (!loop_ready.ok()) {
+     LOG(ERROR) << loop_ready.error();
+   }
+diff --git a/apexd/apexd_loop.cpp b/apexd/apexd_loop.cpp
+index 6377f62f..b179d618 100644
+--- a/apexd/apexd_loop.cpp
++++ b/apexd/apexd_loop.cpp
+@@ -302,7 +302,7 @@ Result<void> ConfigureReadAhead(const std::string& device_path) {
+ }
+ 
+ Result<void> PreAllocateLoopDevices(size_t num) {
+-  Result<void> loop_ready = WaitForFile("/dev/loop-control", 20s);
++  Result<void> loop_ready = WaitForFile("/dev/loop-control", 600s);
+   if (!loop_ready.ok()) {
+     return loop_ready;
+   }

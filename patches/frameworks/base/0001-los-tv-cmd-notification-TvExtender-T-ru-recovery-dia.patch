@@ -1,0 +1,71 @@
+From 989e8d94a74e83b1dadbaa3ed85a7d16377ad0a0 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: cmd notification TvExtender (-T); ru recovery dialog
+ title
+
+---
+ core/res/res/values-ru/strings.xml                |  2 +-
+ .../server/notification/NotificationShellCmd.java | 15 +++++++++++++--
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/core/res/res/values-ru/strings.xml b/core/res/res/values-ru/strings.xml
+index f3e5d575823b..704c3ebeedd0 100644
+--- a/core/res/res/values-ru/strings.xml
++++ b/core/res/res/values-ru/strings.xml
+@@ -259,7 +259,7 @@
+     <string name="reboot_to_update_prepare" msgid="6978842143587422365">"Подготовка обновлений…"</string>
+     <string name="reboot_to_update_package" msgid="4644104795527534811">"Обработка обновлений…"</string>
+     <string name="reboot_to_update_reboot" msgid="4474726009984452312">"Перезагрузка…"</string>
+-    <string name="reboot_to_reset_title" msgid="2226229680017882787">"Сбросить настройки"</string>
++    <string name="reboot_to_reset_title" msgid="2226229680017882787">"Перезагрузка в recovery"</string>
+     <string name="reboot_to_reset_message" msgid="3347690497972074356">"Перезагрузка…"</string>
+     <string name="shutdown_progress" msgid="5017145516412657345">"Выключение..."</string>
+     <string name="shutdown_confirm" product="tablet" msgid="2872769463279602432">"Планшетный ПК будет отключен."</string>
+diff --git a/services/core/java/com/android/server/notification/NotificationShellCmd.java b/services/core/java/com/android/server/notification/NotificationShellCmd.java
+index 052828bf2e00..6b4ea2c06da0 100644
+--- a/services/core/java/com/android/server/notification/NotificationShellCmd.java
++++ b/services/core/java/com/android/server/notification/NotificationShellCmd.java
+@@ -97,8 +97,8 @@ public class NotificationShellCmd extends ShellCommand {
+             + "  -I|--large-icon <iconspec>\n"
+             + "  -S|--style <style> [styleargs]\n"
+             + "  -c|--content-intent <intentspec>\n"
+-            + "  -u|--user <user_id>"
+-            + "\n"
++            + "  -u|--user <user_id>\n"
++            + "  -T|--tv                           (los-tv: пометить уведомление доступным на TV)\n"
+             + "styles: (default none)\n"
+             + "  bigtext\n"
+             + "  bigpicture --picture <iconspec>\n"
+@@ -499,6 +499,7 @@ public class NotificationShellCmd extends ShellCommand {
+ 
+         int userId = UserHandle.USER_NULL;
+         boolean verbose = false;
++        boolean tv = false;  // los-tv: --tv → TvExtender, иначе TvSystemUI прячет
+         Notification.BigPictureStyle bigPictureStyle = null;
+         Notification.BigTextStyle bigTextStyle = null;
+         Notification.InboxStyle inboxStyle = null;
+@@ -513,6 +514,10 @@ public class NotificationShellCmd extends ShellCommand {
+                 case "--verbose":
+                     verbose = true;
+                     break;
++                case "-T":
++                case "--tv":
++                    tv = true;
++                    break;
+                 case "-t":
+                 case "--title":
+                 case "title":
+@@ -704,6 +709,12 @@ public class NotificationShellCmd extends ShellCommand {
+             userId = UserHandle.getUserId(callingUid);
+             Slogf.v(TAG, "set user id (%d) from calling uid (%d)", userId, callingUid);
+         }
++        if (tv) {
++            // los-tv: TvSystemUI показывает только уведомления с TvExtender
++            // (TvNotificationHandler: !isAvailableOnTv() → «not relevant for tv»),
++            // а cmd notification post этого флага не ставил.
++            builder.extend(new Notification.TvExtender());
++        }
+         final Notification n = builder.build();
+         pw.printf("posting for user %d:\n  %s\n", userId, n);
+         Slogf.v(TAG, "posting: %s for user %d", n, userId);

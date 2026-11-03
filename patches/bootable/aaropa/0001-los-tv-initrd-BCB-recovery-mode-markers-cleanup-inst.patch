@@ -1,0 +1,172 @@
+From 466d67a991fd1ab11dd0524fdd751ff3369a652a Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:38 +1000
+Subject: [PATCH] los-tv: initrd: BCB recovery, mode markers cleanup, installer
+ hooks
+
+---
+ Android.mk  | 26 ++++++++++++++++++++++---
+ download.sh | 18 ++++++++++++++++++
+ initrd/init | 55 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 96 insertions(+), 3 deletions(-)
+
+diff --git a/Android.mk b/Android.mk
+index 9077f3f..5a97bab 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -72,6 +72,16 @@ else
+ systemimg  := $(PRODUCT_OUT)/system.img
+ endif
+ 
++# los-tv step45: initrd is padded to a fixed size (16 MiB) so that the OTA
++# payload always fits the device files /mnt/cdrom/initrd_{a,b}.img expanded
++# to the same size. Trailing zeros after the gzip stream are ignored by the
++# kernel (proven on hardware/QEMU, see data/2026-10-19-recovery-bcb-step39.txt).
++INITRD_FIXED_SIZE := 16777216
++# Абсолютный путь: рецепт делает cd в $(TARGET_INITRD_OUT), поэтому
++# относительный $@.unpadded указывает в несуществующий каталог
++# (падение сборки initrd 2026-10-22/23).
++INITRD_UNPADDED := $(abspath $(PRODUCT_OUT)/initrd.img.unpadded)
++
+ TARGET_INITRD_OUT := $(PRODUCT_OUT)/initrd
+ INITRD_RAMDISK := $(TARGET_INITRD_OUT).img
+ $(INITRD_RAMDISK): $(initrd_bin) $(systemimg) $(TARGET_INITRD_SCRIPTS) | $(ACP) $(HOST_OUT_EXECUTABLES)/toybox
+@@ -82,7 +92,18 @@ $(INITRD_RAMDISK): $(initrd_bin) $(systemimg) $(TARGET_INITRD_SCRIPTS) | $(ACP)
+ 	$(if $(RELEASE_OS_TITLE),echo "OS_TITLE=$(RELEASE_OS_TITLE)" >> $(TARGET_INITRD_OUT)/scripts/00-ver)
+ 	$(if $(INSTALL_PREFIX),echo "INSTALL_PREFIX=$(INSTALL_PREFIX)" >> $(TARGET_INITRD_OUT)/scripts/00-ver)
+ 	$(ACP) -dpr $(initrd_dir)/* $(initrd_lib_dir)/* $(TARGET_INITRD_OUT)
+-	cd $(TARGET_INITRD_OUT); find . | cpio -o | gzip -9 > ../initrd.img
++	cd $(TARGET_INITRD_OUT); find . | cpio -o | gzip -9 > $(INITRD_UNPADDED)
++	$(hide) sz=$$(wc -c < $(INITRD_UNPADDED)); \
++	  if [ $$sz -gt $(INITRD_FIXED_SIZE) ]; then \
++	    echo "ERROR: initrd accumulated to $$sz bytes, exceeds INITRD_FIXED_SIZE=$(INITRD_FIXED_SIZE) (16 MiB)." >&2; \
++	    echo "ERROR: trim initrd/initrd_lib contents or increase INITRD_FIXED_SIZE in bootable/aaropa/Android.mk." >&2; \
++	    exit 1; \
++	  fi; \
++	  cp $(INITRD_UNPADDED) $@; \
++	  truncate -s $(INITRD_FIXED_SIZE) $@; \
++	  rm -f $(INITRD_UNPADDED); \
++	  final=$$(wc -c < $@); \
++	  [ "$$final" -eq "$(INITRD_FIXED_SIZE)" ] || { echo "ERROR: initrd padding failed ($$final bytes)" >&2; exit 1; }
+ 
+ .PHONY: initrdimage
+ initrdimage: $(INITRD_RAMDISK)
+@@ -145,8 +166,7 @@ $(ISO_IMAGE): $(iso_dir) $(BUILT_IMG)
+ 	PATH="/sbin:/usr/sbin:/bin:/usr/bin"; \
+ 	xorriso -as mkisofs -graft-points --modification-date=$(MOD_DATE) -b /boot/grub/i386-pc/eltorito.img \
+ 		-no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info --grub2-mbr $(BOOT_HYBRID) \
+-		-hfsplus -apm-block-size 2048 -hfsplus-file-creator-type chrp tbxj /System/Library/CoreServices/.disk_label \
+-		-hfs-bless-by i /System/Library/CoreServices/boot.efi --efi-boot efi.img -efi-boot-part --efi-boot-image \
++		--efi-boot efi.img -efi-boot-part --efi-boot-image \
+ 		--protective-msdos-label -o $@ $^ --sort-weight 0 / --sort-weight 1 /boot \
+ 		-V "$(DISK_LABEL)"
+ 	$(hide) $(SHA256) $(ISO_IMAGE) | sed "s|$(PRODUCT_OUT)/||" > $(ISO_IMAGE).sha256sum
+diff --git a/download.sh b/download.sh
+index 3f6e46c..cd3f2da 100755
+--- a/download.sh
++++ b/download.sh
+@@ -117,6 +117,21 @@ extract_initrd_lib() {
+   rm -f initrd_lib.tar.gz
+ }
+ 
++# los-tv: download.sh удаляет iso/ целиком, поэтому пропатченный install.sfs
++# (оверлей Calamares, см. data/2026-10-22-installer-calamares-analysis.txt)
++# потерялся бы молча. Требуем явного разрешения.
++check_patched_installer() {
++  local marker="install.sfs.patched"
++  if [[ -f "$marker" && "${FORCE_INSTALLER_UPDATE:-0}" != "1" ]]; then
++    echo "!! В bootable/aaropa/ лежит ПРОПАТЧЕННЫЙ install.sfs (los-tv):" >&2
++    sed 's/^/   /' "$marker" >&2
++    echo "!! Скачивание удалит его (remove_existing_files чистит iso/)." >&2
++    echo "!! Если это осознанно: FORCE_INSTALLER_UPDATE=1 $0" >&2
++    echo "!! После скачивания заново наложите оверлей: MODE=apply bash ~/patch-install-sfs.sh" >&2
++    exit 1
++  fi
++}
++
+ # Function to display the help message
+ show_help() {
+   cat << EOF
+@@ -137,6 +152,9 @@ case "$1" in
+     ;;
+   
+   --initrd-only)
++    # los-tv: не затирать пропатченный инсталлятор без явного разрешения
++    check_patched_installer
++
+     # Check the version first
+     check_version
+ 
+diff --git a/initrd/init b/initrd/init
+index 3be914b..eb54631 100755
+--- a/initrd/init
++++ b/initrd/init
+@@ -352,6 +352,30 @@ fi || debug_shell fatal-err
+ 
+ remount_rw
+ 
++# los-tv step39: recovery по BCB из misc.img (adb reboot recovery / reboot recovery).
++# Android-init пишет в misc команду "boot-recovery"; GRUB её не читает, поэтому
++# ловим флаг здесь — до выбора MODE_BASE — и грузим recovery как по androidboot.mode.
++if [ -z "$RCVRY" ] && [ -e "/mnt/$SRC/misc.img" ]; then
++	if busybox head -c 32 "/mnt/$SRC/misc.img" 2>/dev/null | busybox grep -q boot-recovery; then
++		RCVRY=1
++	fi
++fi
++
++# los-tv: маркеры режима для заголовка GRUB (их ставит los-tv-boot-mode.sh
++# в Android на триггере shutdown). GRUB уже показал меню и выбрал пункт,
++# поэтому здесь маркеры больше не нужны — удаляем, чтобы суффикс не залипал.
++if [ -d "/mnt/$SRC/boot/grub" ]; then
++	rm -f "/mnt/$SRC/boot/grub/mode-sideload" "/mnt/$SRC/boot/grub/mode-recovery" 2>/dev/null
++fi
++
++# los-tv step40: в recovery нужен драйвер NIC (r8169=m в ядре). В recovery-рамдиске
++# модулей нет, поэтому грузим их из initrd до switch_root; firmware тоже в initrd.
++if [ "$RCVRY" ]; then
++	for _m in mdio-bus libphy fixed_phy fwnode_mdio of_mdio mdio_devres realtek r8169 cdc_ether cdc_ncm ax88179_178a r8152; do
++		/bin/insmod "/lib/modules/6.18.21-zenith+/$_m.ko" 2>/dev/null || true
++	done
++fi
++
+ if [ "$ISO" ]; then
+ 	mount -o loop "/mnt/$SRC/$ISO" /mnt
+ fi
+@@ -437,6 +461,37 @@ else
+ 	# Copy /tmp/log to /android/data/bootlog.txt if DEBUG mode is set
+ 	[ -n "$DEBUG" ] && cp /tmp/log /android/data/bootlog.txt
+ 
++	# los-tv: persistent kmsg log on the ESP (hardware diagnostics).
++	# Enabled by default; disable with androidboot.los_tv_kmsglog=0.
++	# The ESP is located by UUID from fstab.android (no hardcoded device).
++	if ! grep -q 'androidboot.los_tv_kmsglog=0' /proc/cmdline; then
++		esp_spec=
++		if [ -f "/mnt/$SRC/fstab.android" ]; then
++			while read -r _src _tgt _rest; do
++				[ "$_tgt" = "esp" ] && { esp_spec=$_src; break; }
++			done <"/mnt/$SRC/fstab.android"
++		fi
++		esp_dev=
++		[ -n "$esp_spec" ] && esp_dev=$(find_device "$esp_spec" 2>/dev/null)
++		if [ -n "$esp_dev" ] && [ -b "$esp_dev" ]; then
++			mkdir -p /tmp/esp
++			if mount -t vfat -o sync,umask=0022 "$esp_dev" /tmp/esp 2>/dev/null; then
++				kmsg_log=/tmp/esp/boot-debug.txt
++				[ "$RCVRY" ] && kmsg_log=/tmp/esp/boot-debug-recovery.txt
++				(
++					exec >"$kmsg_log" 2>&1
++					echo "==== los-tv initrd log ===="
++					echo -n "uptime: "; cat /proc/uptime
++					echo -n "cmdline: "; cat /proc/cmdline
++					echo "esp: $esp_dev ($esp_spec)"
++					echo "los-tv: kmsg logger active ($esp_dev)" > /dev/kmsg
++					exec /bin/busybox cat /dev/kmsg
++				) &
++				sleep 2
++			fi
++		fi
++	fi
++
+ 	# shellcheck disable=SC2093
+ 	exec ${SWITCH:-switch_root} $MODE_BASE /init
+ fi

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=los-tv log HTTP server
+Comment=Read-only HTTP access to installer logs on port 8080
+Exec=/usr/local/bin/los-tv-loghttp
+Terminal=false
+NoDisplay=true

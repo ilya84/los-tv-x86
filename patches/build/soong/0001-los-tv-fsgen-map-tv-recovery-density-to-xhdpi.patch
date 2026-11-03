@@ -1,0 +1,23 @@
+From 34a0c0b2f91c7043e739876329b2e706d8d4ef48 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:38 +1000
+Subject: [PATCH] los-tv: fsgen: map tv recovery density to xhdpi
+
+---
+ fsgen/util.go | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/fsgen/util.go b/fsgen/util.go
+index 766ddf055..22a934828 100644
+--- a/fsgen/util.go
++++ b/fsgen/util.go
+@@ -39,6 +39,9 @@ func getDpi(ctx android.EarlyModuleContext) string {
+ 	}
+ 	if !android.InList(recoveryDensity, []string{"xxxhdpi", "xxhdpi", "xhdpi", "hdpi", "mdpi"}) {
+ 		recoveryDensity = strings.TrimSuffix(recoveryDensity, "dpi")
++		if recoveryDensity == "tv" {
++		        return "xhdpi"
++		}
+ 		dpiInt, err := strconv.ParseInt(recoveryDensity, 10, 64)
+ 		if err != nil {
+ 			panic(fmt.Sprintf("Error in parsing recoveryDensity: %s", err.Error()))
