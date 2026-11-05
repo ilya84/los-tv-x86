@@ -21,6 +21,13 @@ add-on for Widevine L3 / NDK translation / Play Store.
   отражает запрошенный режим («(to Recovery)», «(to SideLoad)») и таймаут
   сокращается до 5 секунд.
 - **База**: microG GmsCore, F-Droid, Jellyfin TV, VLC;
+- **SELinux Enforcing** (e3000n, 2026-11-05): медиа-тракт, Widevine L3,
+  Wink/Jellyfin (видео+звук), Bluetooth, boot animation; radeon-правки
+  не затрагивают Intel-путь.
+- **Play Store (TV) + microG**: на e3000n проверены запуск и вход.
+  UX-особенность: после входа Play Store может вернуться на экран
+  «Войти» — просто перезапустите его; для закачки нужен
+  `appops set com.android.vending ACTIVATE_VPN allow` (как на `.198`).
 - **Add-on из recovery**: Widevine L3 (ChromeOS hatch), NDK translation
   (google_apis), Play Store/YouTube TV из APK пользователя. Payload-архив
   для повторной установки, режим «только APK», автовосстановление после
@@ -56,8 +63,8 @@ GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data),
 
 ## Статус и ограничения
 
-- Сборка **userdebug**, SELinux сейчас **permissive** (переход на enforcing —
-  отдельный этап).
+- Сборка **userdebug**, SELinux **Enforcing** проверен на e3000n
+  (2026-11-05); Intel H81M — следующий шаг.
 - Шифрование данных не настроено.
 - Уровень патчей безопасности — на момент синхронизации LineageOS 23.2.
 - SSE4.2 обязателен на данный момент. Поддержка другого железа — в работе.

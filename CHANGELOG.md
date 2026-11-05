@@ -6,6 +6,34 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-05 — SELinux Enforcing и медиа (e3000n)
+
+- SELinux переведён в **Enforcing** на e3000n (AMD Kabini): загрузка, сеть,
+  adb, лончер, boot animation, Bluetooth, Widevine L3, media-сервисы.
+- `init`: bind-mount radeon-списков кодеков разрешён (`mounton`/`ioctl`
+  для `vendor_configs_file`/`system_file`); иначе приложения брали
+  софт-`c2.android.avc` и SurfaceFlinger падал на YV12.
+- `c2.ffmpeg.h264` в домене `mediacodec`: `appdomain_tmpfs`,
+  `vendor_ffmpeg_prop` (`persist.vendor.ffmpeg-codec2.pixel_format=RGBX_8888`),
+  `hal_drm_clearkey_aidl appdomain_tmpfs`; Widevine L3 provisioning.
+- `mediaswcodec`, `hal_audio_default`, `audioserver`: `tmpfs:file`
+  `rw`/`setattr` + `allowxperm ... ASHMEM_GET_SIZE`; `tmpfs`
+  `mlstrustedobject` для MLS-записи в MessageQueue.
+- Home на USB-клавиатуре → `HOME` (`device/google/atv/Generic.kl`).
+- GRUB: автопереход в recovery по `MODE=recovery` теперь добавляет
+  `androidboot.force_normal_boot=0` и убирает `selinux=enforcing`
+  (`RECOVERY_EXTRA`/`SELINUX_ENTRY`).
+- Add-on из recovery проверен (NDK, Widevine, метки, build.prop);
+  Play Store 53.4.17 (TV) + microG 0.3.17 установлены из APK пользователя
+  (в git не публикуются).
+- Play Store + microG UX: после входа Play Store может вернуться на экран
+  «Войти» (аккаунт уже добавлен) — перезапустите Play Store. Для закачки
+  нужен appop `ACTIVATE_VPN=allow` (как на `.198`):
+  `appops set com.android.vending ACTIVATE_VPN allow`.
+- Итог: Wink TV и Jellyfin — видео и звук под Enforcing, качество
+  приемлемое; `system/sepolicy` и `device/google/atv` добавлены в
+  `patches/`.
+
 ## 2026-08 … 09 — база и загрузка
 
 - Перенос x86_64 TV-сборки на LineageOS 23.2 (Android 16), продукт

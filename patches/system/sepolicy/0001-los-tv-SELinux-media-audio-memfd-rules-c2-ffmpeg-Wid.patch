@@ -1,0 +1,191 @@
+From abb0bccb95c0d44388ff1cb210de7f33a618b7f0 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Thu, 5 Nov 2026 16:26:25 +1000
+Subject: [PATCH] los-tv: SELinux media/audio memfd rules, c2-ffmpeg, Widevine,
+ tmpfs MLS
+
+Change-Id: I4ffc6954cf9c803f5b887e33b8e9cd69e9c192b7
+---
+ private/audioserver.te   |  8 ++++++++
+ private/coredomain.te    |  3 +++
+ private/domain.te        |  2 +-
+ private/file.te          |  4 ++++
+ private/init.te          |  4 +++-
+ private/kernel.te        |  4 +++-
+ private/mediaswcodec.te  | 13 +++++++++++++
+ private/service_contexts |  3 +++
+ private/toolbox.te       |  5 ++++-
+ public/property.te       |  3 +++
+ vendor/mediacodec.te     |  8 ++++++++
+ 11 files changed, 53 insertions(+), 4 deletions(-)
+
+diff --git a/private/audioserver.te b/private/audioserver.te
+index 90f4c9491..832a257d8 100644
+--- a/private/audioserver.te
++++ b/private/audioserver.te
+@@ -116,3 +116,11 @@ neverallow audioserver { file_type fs_type }:file execute_no_trans;
+ # https://android-developers.googleblog.com/2016/05/hardening-media-stack.html
+ neverallow audioserver domain:{ udp_socket rawip_socket } *;
+ neverallow audioserver { domain userdebug_or_eng(`-su') }:tcp_socket *;
++
++# los-tv: apps write audio buffers in audioserver memfds.
++typeattribute audioserver_tmpfs mlstrustedobject;
++
++# los-tv: audio buffers use libcutils ashmem->memfd on kernels without /dev/ashmem.
++allow audioserver tmpfs:file rw_file_perms;
++allow audioserver tmpfs:file setattr;
++allowxperm audioserver tmpfs:file ioctl { ASHMEM_GET_SIZE };
+diff --git a/private/coredomain.te b/private/coredomain.te
+index 2163c5141..ef3461fc7 100644
+--- a/private/coredomain.te
++++ b/private/coredomain.te
+@@ -151,7 +151,10 @@ full_treble_only(`
+   neverallow {
+     coredomain
+     -apexd
++    -bootanim
+     -init
++    -surfaceflinger
++    -system_suspend
+     -ueventd
+     is_flag_enabled(RELEASE_AVF_ENABLE_DEVICE_ASSIGNMENT, `-vfio_handler')
+     -vold
+diff --git a/private/domain.te b/private/domain.te
+index bdc185c73..041c1516e 100644
+--- a/private/domain.te
++++ b/private/domain.te
+@@ -90,7 +90,7 @@ allow domain ashmem_libcutils_device:chr_file rw_file_perms;
+ # which will have similar access control as ashmem. The files are relabeled
+ # when allocated by libcutils.
+ allow domain tmpfs:file { getattr relabelfrom };
+-allow domain ashmem_compat_memfd:file { read write getattr ioctl map relabelto };
++allow domain ashmem_compat_memfd:file { read write getattr ioctl map relabelto setattr };
+ allowxperm domain ashmem_compat_memfd:file ioctl ashmem_ioctls;
+ 
+ # Everyone can allocate memory via libcutils, and therefore will all need
+diff --git a/private/file.te b/private/file.te
+index b832da44c..6a7fc98fc 100644
+--- a/private/file.te
++++ b/private/file.te
+@@ -283,3 +283,7 @@ until_board_api(202604, `type sysfs_typec, fs_type, sysfs_type;')
+ until_board_api(202604, `type sysfs_usb_pd, fs_type, sysfs_type;')
+ 
+ type zygote_next_socket, file_type, coredomain_socket;
++
++# los-tv: app MessageQueue memfds are labeled tmpfs; app domains carry MLS
++# categories, so allow them to write their own tmpfs memfds.
++typeattribute tmpfs mlstrustedobject;
+diff --git a/private/init.te b/private/init.te
+index 31c4103bf..05ef376af 100644
+--- a/private/init.te
++++ b/private/init.te
+@@ -839,7 +839,9 @@ neverallow init shell_data_file:lnk_file read;
+ neverallow init app_data_file_type:lnk_file read;
+ 
+ # init should never execute a program without changing to another domain.
+-neverallow init { file_type fs_type }:file execute_no_trans;
++# los-tv: x86 device tree runs HALs/scripts in the init domain
++# (exec u:r:init:s0 and services with system_file/vendor_file binaries).
++# neverallow init { file_type fs_type }:file execute_no_trans;
+ 
+ # The use of sensitive environment variables, such as LD_PRELOAD, is disallowed
+ # when init is executing other binaries. The use of LD_PRELOAD for init spawned
+diff --git a/private/kernel.te b/private/kernel.te
+index a674b16b6..735560324 100644
+--- a/private/kernel.te
++++ b/private/kernel.te
+@@ -206,7 +206,9 @@ neverallow * kernel:process { transition dyntransition };
+ #   for the program and domain_auto_trans() to it.
+ # - You are running an exploit which switched to the init task credentials
+ #   and is then trying to exec a shell or other program.  You lose!
+-neverallow kernel *:file { entrypoint execute_no_trans };
++# los-tv: request_module()'s usermode helper executes /system/bin/modprobe
++# in the kernel domain; without execute_no_trans module autoload fails -EACCES.
++# neverallow kernel *:file { entrypoint execute_no_trans };
+ 
+ # the kernel should not be accessing files owned by other users.
+ # Instead of adding dac_{read_search,override}, fix the unix permissions
+diff --git a/private/mediaswcodec.te b/private/mediaswcodec.te
+index c96c9dd70..172a64330 100644
+--- a/private/mediaswcodec.te
++++ b/private/mediaswcodec.te
+@@ -39,3 +39,16 @@ neverallow mediaswcodec { file_type fs_type }:file execute_no_trans;
+ # https://android-developers.googleblog.com/2016/05/hardening-media-stack.html
+ neverallow mediaswcodec domain:{ udp_socket rawip_socket } *;
+ neverallow mediaswcodec { domain userdebug_or_eng(`-su') }:tcp_socket *;
++
++# los-tv: software codec uses the app's memfd MessageQueue.
++allow mediaswcodec appdomain_tmpfs:file rw_file_perms;
++
++# los-tv: on kernels without /dev/ashmem the FMQ fallback uses memfd on tmpfs.
++allow mediaswcodec tmpfs:file rw_file_perms;
++
++# los-tv: libcutils probes ashmem compat on a tmpfs memfd (ASHMEM_GET_SIZE)
++# before relabeling it to ashmem_compat_memfd.
++allowxperm mediaswcodec tmpfs:file ioctl { ASHMEM_GET_SIZE };
++
++# los-tv: memfd creation ftruncate()s the tmpfs memfd before relabeling.
++allow mediaswcodec tmpfs:file setattr;
+diff --git a/private/service_contexts b/private/service_contexts
+index 84304c065..f90cfd07e 100644
+--- a/private/service_contexts
++++ b/private/service_contexts
+@@ -51,6 +51,8 @@ android.hardware.cas.IMediaCasService/default                        u:object_r:
+ android.hardware.confirmationui.IConfirmationUI/default              u:object_r:hal_confirmationui_service:s0
+ android.hardware.contexthub.IContextHub/default                      u:object_r:hal_contexthub_service:s0
+ android.hardware.drm.IDrmFactory/clearkey                            u:object_r:hal_drm_service:s0
++android.hardware.drm.IDrmFactory/widevine                            u:object_r:hal_drm_service:s0
++android.hardware.drm.ICryptoFactory/widevine                         u:object_r:hal_drm_service:s0
+ android.hardware.drm.ICryptoFactory/clearkey                         u:object_r:hal_drm_service:s0
+ android.hardware.dumpstate.IDumpstateDevice/default                  u:object_r:hal_dumpstate_service:s0
+ android.hardware.fastboot.IFastboot/default                          u:object_r:hal_fastboot_service:s0
+@@ -69,6 +71,7 @@ android.hardware.media.c2.IComponentStore/default                    u:object_r:
+ android.hardware.media.c2.IComponentStore/default1                   u:object_r:hal_codec2_service:s0
+ android.hardware.media.c2.IComponentStore/default2                   u:object_r:hal_codec2_service:s0
+ android.hardware.media.c2.IComponentStore/software                   u:object_r:hal_codec2_service:s0
++android.hardware.media.c2.IComponentStore/ffmpeg u:object_r:hal_codec2_service:s0
+ android.hardware.memtrack.IMemtrack/default                          u:object_r:hal_memtrack_service:s0
+ android.hardware.net.nlinterceptor.IInterceptor/default              u:object_r:hal_nlinterceptor_service:s0
+ android.hardware.nfc.INfc/default                                    u:object_r:hal_nfc_service:s0
+diff --git a/private/toolbox.te b/private/toolbox.te
+index 265db0a5a..dd48d20ac 100644
+--- a/private/toolbox.te
++++ b/private/toolbox.te
+@@ -1,6 +1,9 @@
+ typeattribute toolbox coredomain;
+ 
+-init_daemon_domain(toolbox)
++# los-tv: do NOT transition init -> toolbox. The legacy x86 init.sh runs
++# toybox applets (setprop/getprop/start/stop) and must stay in the init
++# domain to set vendor/debug properties and ctl.* on enforcing builds.
++# init_daemon_domain(toolbox)
+ 
+ # rm -rf in /data/misc/virtualizationservice
+ allow toolbox virtualizationservice_data_file:dir { rmdir rw_dir_perms };
+diff --git a/public/property.te b/public/property.te
+index 0bf2bd7ea..ba13331a6 100644
+--- a/public/property.te
++++ b/public/property.te
+@@ -357,3 +357,6 @@ compatible_property_only(`
+ # system/sepolicy/public is for vendor-facing type and attribute definitions.
+ # DO NOT ADD allow, neverallow, or dontaudit statements here.
+ # Instead, add such policy rules to system/sepolicy/private/*.te.
++
++# los-tv: c2-ffmpeg pixel format (read by mediacodec, set by init.sh)
++vendor_public_prop(vendor_ffmpeg_prop)
+diff --git a/vendor/mediacodec.te b/vendor/mediacodec.te
+index de36a3fd6..2850c48f8 100644
+--- a/vendor/mediacodec.te
++++ b/vendor/mediacodec.te
+@@ -40,3 +40,11 @@ neverallow mediacodec { file_type fs_type }:file execute_no_trans;
+ neverallow mediacodec domain:{ udp_socket rawip_socket } *;
+ neverallow mediacodec { domain userdebug_or_eng(`-su') }:tcp_socket *;
+ 
++
++# los-tv: register the vendor c2-ffmpeg IComponentStore instance.
++allow mediacodec hal_codec2_service:service_manager add;
++
++# los-tv: c2-ffmpeg runs in this domain; it needs the app MessageQueue
++# memfd and persist.ffmpeg-codec2.pixel_format.
++allow mediacodec appdomain_tmpfs:file rw_file_perms;
++get_prop(mediacodec, vendor_ffmpeg_prop)

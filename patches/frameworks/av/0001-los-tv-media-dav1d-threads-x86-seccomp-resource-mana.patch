@@ -1,0 +1,148 @@
+From a9947afc7805907e2b0b0bdeb7467a0fb74cfb43 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 3 Nov 2026 13:38:39 +1000
+Subject: [PATCH] los-tv: media: dav1d threads, x86 seccomp, resource-manager
+ stats stub
+
+---
+ .../components/dav1d/C2SoftDav1dDec.cpp       |  2 +-
+ .../seccomp_policy/mediaswcodec-x86.policy    |  1 +
+ .../seccomp_policy/mediaswcodec-x86_64.policy |  1 +
+ services/mediametrics/Android.bp              | 16 +++++++++
+ services/mediaresourcemanager/Android.bp      |  8 +----
+ .../ResourceManagerMetricsStub.cpp            | 33 +++++++++++++++++++
+ 6 files changed, 53 insertions(+), 8 deletions(-)
+ create mode 100644 services/mediaresourcemanager/ResourceManagerMetricsStub.cpp
+
+diff --git a/media/codec2/components/dav1d/C2SoftDav1dDec.cpp b/media/codec2/components/dav1d/C2SoftDav1dDec.cpp
+index 2a0fa91326..696b9f1174 100644
+--- a/media/codec2/components/dav1d/C2SoftDav1dDec.cpp
++++ b/media/codec2/components/dav1d/C2SoftDav1dDec.cpp
+@@ -549,7 +549,7 @@ bool C2SoftDav1dDec::initDecoder() {
+     dav1d_default_settings(&lib_settings);
+     lib_settings.all_layers = 0;
+     int cpu_count = GetCPUCoreCount();
+-    lib_settings.n_threads = std::max(cpu_count / 2, 1);  // use up to half the cores by default.
++    lib_settings.n_threads = std::max(cpu_count - 1, 1);  // reserve one core for the rest of the system (AOSP defaulted to half the cores).
+ 
+     int32_t numThreads =
+             android::base::GetIntProperty(NUM_THREADS_DAV1D_PROPERTY, NUM_THREADS_DAV1D_DEFAULT);
+diff --git a/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy b/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
+index 01d77781c3..dbb6f5fdba 100644
+--- a/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
++++ b/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
+@@ -71,6 +71,7 @@ sched_yield: 1
+ # Required by mesa3d
+ kcmp: 1
+ sched_getaffinity: 1
++sched_setaffinity: 1
+ sysinfo: 1
+ 
+ # The mmap2/mprotect/prctl rules in this file are less restrictive than the rules
+diff --git a/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy b/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
+index 7e678286b5..2fb481918d 100644
+--- a/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
++++ b/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
+@@ -71,6 +71,7 @@ sched_yield: 1
+ # Required by mesa3d
+ kcmp: 1
+ sched_getaffinity: 1
++sched_setaffinity: 1
+ sysinfo: 1
+ 
+ # The mmap/mprotect/prctl rules in this file are less restrictive than the rules
+diff --git a/services/mediametrics/Android.bp b/services/mediametrics/Android.bp
+index d29aa805c8..389ce4743b 100644
+--- a/services/mediametrics/Android.bp
++++ b/services/mediametrics/Android.bp
+@@ -233,3 +233,19 @@ genrule {
+         "stats_media_metrics.cpp",
+     ],
+ }
++
++
++cc_library_static {
++    name: "libstats_media_metrics_static",
++    generated_sources: ["stats_media_metrics.cpp"],
++    generated_headers: ["stats_media_metrics.h"],
++    export_generated_headers: ["stats_media_metrics.h"],
++    shared_libs: [
++        "libcutils",
++        "libstatssocket",
++    ],
++    static_libs: [
++        "libstatspull_static",
++    ],
++    apex_available: ["//apex_available:platform"],
++}
+diff --git a/services/mediaresourcemanager/Android.bp b/services/mediaresourcemanager/Android.bp
+index 9509ccb7a9..b1dc50c70d 100644
+--- a/services/mediaresourcemanager/Android.bp
++++ b/services/mediaresourcemanager/Android.bp
+@@ -77,7 +77,7 @@ cc_library {
+         "ClientImportanceReclaimPolicy.cpp",
+         "DefaultResourceModel.cpp",
+         "ProcessPriorityReclaimPolicy.cpp",
+-        "ResourceManagerMetrics.cpp",
++        "ResourceManagerMetricsStub.cpp",
+         "ResourceManagerService.cpp",
+         "ResourceManagerServiceNew.cpp",
+         "ResourceObserverService.cpp",
+@@ -97,9 +97,6 @@ cc_library {
+         "libbinder_ndk",
+         "libutils",
+         "liblog",
+-        "libstats_media_metrics",
+-        "libstatspull",
+-        "libstatssocket",
+         "libprotobuf-cpp-lite",
+         "libactivitymanager_aidl",
+         "libaconfig_storage_read_api_cc",
+@@ -122,8 +119,5 @@ cc_library {
+     export_include_dirs: ["."],
+ 
+     export_shared_lib_headers: [
+-        "libstats_media_metrics",
+-        "libstatspull",
+-        "libstatssocket",
+     ],
+ }
+diff --git a/services/mediaresourcemanager/ResourceManagerMetricsStub.cpp b/services/mediaresourcemanager/ResourceManagerMetricsStub.cpp
+new file mode 100644
+index 0000000000..bea7bd9e8e
+--- /dev/null
++++ b/services/mediaresourcemanager/ResourceManagerMetricsStub.cpp
+@@ -0,0 +1,33 @@
++/*
++ * los-tv: no-op replacement for ResourceManagerMetrics.
++ *
++ * The real implementation pulls in libstatspull/libstats_media_metrics, which
++ * live only in the statsd APEX and are not visible to the minijailed
++ * mediaserver.  Codec resource management itself does not depend on these
++ * metrics, so keep the public interface and drop the stats dependency.
++ */
++#include "ResourceManagerMetrics.h"
++#include "UidObserver.h"
++
++#include <string>
++
++namespace android {
++
++ResourceManagerMetrics::ResourceManagerMetrics(const sp<ProcessInfoInterface>&) {}
++ResourceManagerMetrics::~ResourceManagerMetrics() {}
++
++void ResourceManagerMetrics::notifyClientCreated(const ClientInfoParcel&) {}
++void ResourceManagerMetrics::notifyClientReleased(const ClientInfoParcel&, bool) {}
++void ResourceManagerMetrics::notifyClientStarted(const ClientConfigParcel&) {}
++void ResourceManagerMetrics::notifyClientStopped(const ClientConfigParcel&) {}
++void ResourceManagerMetrics::notifyClientConfigChanged(const ClientConfigParcel&) {}
++void ResourceManagerMetrics::pushReclaimAtom(const ClientInfoParcel&,
++                                             const std::vector<int>&,
++                                             const std::vector<ClientInfo>&,
++                                             bool) {}
++void ResourceManagerMetrics::addPid(int, uid_t) {}
++long ResourceManagerMetrics::getPeakConcurrentPixelCount(int) const { return 0; }
++long ResourceManagerMetrics::getCurrentConcurrentPixelCount(int) const { return 0; }
++std::string ResourceManagerMetrics::dump() const { return {}; }
++
++}  // namespace android

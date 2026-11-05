@@ -1,13 +1,14 @@
-From 989e8d94a74e83b1dadbaa3ed85a7d16377ad0a0 Mon Sep 17 00:00:00 2001
+From 7fe715936616dd28951ee6eb149ebfa29ca065f5 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:39 +1000
-Subject: [PATCH] los-tv: cmd notification TvExtender (-T); ru recovery dialog
- title
+Subject: [PATCH] los-tv: TV framework: notification extender, Home key,
+ recovery title
 
 ---
  core/res/res/values-ru/strings.xml                |  2 +-
+ data/keyboards/Generic.kl                         |  2 +-
  .../server/notification/NotificationShellCmd.java | 15 +++++++++++++--
- 2 files changed, 14 insertions(+), 3 deletions(-)
+ 3 files changed, 15 insertions(+), 4 deletions(-)
 
 diff --git a/core/res/res/values-ru/strings.xml b/core/res/res/values-ru/strings.xml
 index f3e5d575823b..704c3ebeedd0 100644
@@ -22,6 +23,19 @@ index f3e5d575823b..704c3ebeedd0 100644
      <string name="reboot_to_reset_message" msgid="3347690497972074356">"Перезагрузка…"</string>
      <string name="shutdown_progress" msgid="5017145516412657345">"Выключение..."</string>
      <string name="shutdown_confirm" product="tablet" msgid="2872769463279602432">"Планшетный ПК будет отключен."</string>
+diff --git a/data/keyboards/Generic.kl b/data/keyboards/Generic.kl
+index 63a2f23b30fa..3d1ae8d90538 100644
+--- a/data/keyboards/Generic.kl
++++ b/data/keyboards/Generic.kl
+@@ -121,7 +121,7 @@ key 98    NUMPAD_DIVIDE
+ key 99    SYSRQ
+ key 100   ALT_RIGHT
+ # key 101 "KEY_LINEFEED"
+-key 102   MOVE_HOME
++key 102   HOME
+ key 103   DPAD_UP
+ key 104   PAGE_UP
+ key 105   DPAD_LEFT
 diff --git a/services/core/java/com/android/server/notification/NotificationShellCmd.java b/services/core/java/com/android/server/notification/NotificationShellCmd.java
 index 052828bf2e00..6b4ea2c06da0 100644
 --- a/services/core/java/com/android/server/notification/NotificationShellCmd.java

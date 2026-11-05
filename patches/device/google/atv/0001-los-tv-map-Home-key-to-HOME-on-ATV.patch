@@ -1,0 +1,32 @@
+From 6fda8c8d52e4b556739dbf782217e62e6ab2c316 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Thu, 5 Nov 2026 16:26:25 +1000
+Subject: [PATCH] los-tv: map Home key to HOME on ATV
+
+---
+ Generic.kl | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/Generic.kl b/Generic.kl
+index 3162ef2..74a66b1 100644
+--- a/Generic.kl
++++ b/Generic.kl
+@@ -20,7 +20,8 @@
+ # a new key layout file with the required keyboard configuration.
+ #
+ 
+-key 1     ESCAPE
++key 1     BACK
++# 2026-10-12: ESC -> BACK для пульта Mi TV Stick (пользователь)
+ key 2     1
+ key 3     2
+ key 4     3
+@@ -121,7 +122,7 @@ key 98    NUMPAD_DIVIDE
+ key 99    SYSRQ
+ key 100   ALT_RIGHT
+ # key 101 "KEY_LINEFEED"
+-key 102   MOVE_HOME
++key 102   HOME
+ key 103   DPAD_UP
+ key 104   PAGE_UP
+ key 105   DPAD_LEFT

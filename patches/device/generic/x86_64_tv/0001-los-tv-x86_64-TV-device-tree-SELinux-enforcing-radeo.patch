@@ -1,19 +1,9 @@
-From 2cf74c7dee300a47cc67578ee8af06702d58bea9 Mon Sep 17 00:00:00 2001
+From 8f1ba88d89b0cfa0bae67f41a5be0ec3d1d23112 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:00 +1000
-Subject: [PATCH] los-tv: x86_64 TV device tree (add-on, app, radeon codecs,
- recovery)
+Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
+ codecs, keylayout, GRUB recovery, addon)
 
-Snapshot of the device configuration as of 2026-11-03:
-
-- LineageOS 23.2 x86_64 TV product, A/B slots, GRUB bootctrl, fstab;
-- proprietary add-on: recovery installer, payload archive, APK staging,
-  post-OTA restore, APK-only mode;
-- LosTvAddon app: launcher tile, QR links, foreground image downloads,
-  install request, tile hide/return;
-- radeon media codec configs (c2.ffmpeg.h264 + VA-API), ARM64 NDK hooks;
-- prebuilt sources; third-party APKs are excluded from git, see
-  prebuilt/README.md (Play Store module removed: add-on supplies the APK).
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -23,7 +13,7 @@ Snapshot of the device configuration as of 2026-11-03:
  ...roid.hardware.drm-service-lazy.widevine.rc |    12 +
  addon/links.txt                               |    16 +
  addon/los-tv-addon-boot.sh                    |   300 +
- addon/los-tv-addon.sh                         |   684 +
+ addon/los-tv-addon.sh                         |   696 +
  addon/los-tv-gpt.cpp                          |   132 +
  addon/los-tv-msg.cpp                          |   253 +
  ..._android.hardware.drm-service.widevine.xml |    10 +
@@ -40,7 +30,7 @@ Snapshot of the device configuration as of 2026-11-03:
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
  bootctrl/{Android.bp.bak => Android.bp}       |     0
- device.mk                                     |   141 +-
+ device.mk                                     |   156 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
  .../client/{Android.bp.bak => Android.bp}     |     0
  .../common/{Android.bp.bak => Android.bp}     |     0
@@ -48,11 +38,15 @@ Snapshot of the device configuration as of 2026-11-03:
  ids/{Android.bp.bak => Android.bp}            |     0
  ids/pci.ids                                   | 43430 ++++++++++++++++
  ids/usb.ids                                   | 25705 +++++++++
+ init.fstab.sh                                 |     7 +-
  init.recovery.sh                              |   136 +
  init.recovery.x86.rc                          |    15 +
- init.sh                                       |    44 +-
- init.x86.rc                                   |    10 +
+ init.sh                                       |    85 +-
+ init.x86.rc                                   |    16 +
  keylayout/Generic.kl                          |   496 +
+ kmsglog/los-tv-kmsglog                        |   Bin 0 -> 9216 bytes
+ kmsglog/los-tv-kmsglog.c                      |    60 +
+ kmsglog/los-tv-kmsglog.rc                     |    42 +
  libinit/{Android.bp.bak => Android.bp}        |     0
  librecovery_ui/{Android.bp.bak => Android.bp} |     0
  ...e_x86_64_tablet.mk => lineage_x86_64_tv.mk |    34 +-
@@ -63,7 +57,7 @@ Snapshot of the device configuration as of 2026-11-03:
  .../SettingsProvider/res/values/defaults.xml  |     4 +
  packages.mk                                   |     2 +-
  permissions/google_features.xml               |    10 +
- prebuilt/Android.bp                           |   231 +
+ prebuilt/Android.bp                           |   233 +
  prebuilt/README.md                            |    59 +
  prebuilt/addon-autorestore.rc                 |     5 +
  prebuilt/addon-autorestore.sh                 |    68 +
@@ -124,12 +118,26 @@ Snapshot of the device configuration as of 2026-11-03:
  recovery/root/system/lib/modules/cdc_ether.ko |   Bin 0 -> 34192 bytes
  .../root/system/lib/modules/rndis_host.ko     |   Bin 0 -> 28896 bytes
  scripts/{Android.bp.bak => Android.bp}        |     7 +
+ scripts/boot-mode-selection.sh                |    11 +-
  scripts/los-tv-boot-mode.sh                   |    48 +
  seccomp/mediaswcodec.policy                   |     1 +
+ .../thermal-daemon/hal_thermal_intel.te       |     3 +
+ sepolicy/plat_private/file_contexts           |    35 +-
+ sepolicy/plat_private/genfs_contexts          |     9 +-
+ sepolicy/plat_private/los-tv-init.te          |    77 +
+ sepolicy/plat_private/los-tv-kmsglog.te       |    27 +
+ sepolicy/plat_private/los-tv.te               |    70 +
+ sepolicy/plat_private/surfaceflinger.te       |    21 +-
+ sepolicy/plat_private/ueventd.te              |     7 +
+ sepolicy/plat_private/vold.te                 |     6 +
+ sepolicy/vendor/hal_audio.te                  |     7 +
+ sepolicy/vendor/hal_drm_widevine.te           |    12 +
+ sepolicy/vendor/los-tv.te                     |    41 +
+ sepolicy/vendor/property_contexts             |     3 +
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 114 files changed, 74809 insertions(+), 55 deletions(-)
+ 132 files changed, 75289 insertions(+), 89 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -158,6 +166,9 @@ Snapshot of the device configuration as of 2026-11-03:
  create mode 100644 ids/pci.ids
  create mode 100644 ids/usb.ids
  create mode 100644 keylayout/Generic.kl
+ create mode 100755 kmsglog/los-tv-kmsglog
+ create mode 100644 kmsglog/los-tv-kmsglog.c
+ create mode 100644 kmsglog/los-tv-kmsglog.rc
  rename libinit/{Android.bp.bak => Android.bp} (100%)
  rename librecovery_ui/{Android.bp.bak => Android.bp} (100%)
  rename lineage_x86_64_tablet.mk => lineage_x86_64_tv.mk (59%)
@@ -227,6 +238,14 @@ Snapshot of the device configuration as of 2026-11-03:
  create mode 100644 recovery/root/system/lib/modules/rndis_host.ko
  rename scripts/{Android.bp.bak => Android.bp} (63%)
  create mode 100644 scripts/los-tv-boot-mode.sh
+ create mode 100644 sepolicy/plat_private/los-tv-init.te
+ create mode 100644 sepolicy/plat_private/los-tv-kmsglog.te
+ create mode 100644 sepolicy/plat_private/los-tv.te
+ create mode 100644 sepolicy/plat_private/ueventd.te
+ create mode 100644 sepolicy/plat_private/vold.te
+ create mode 100644 sepolicy/vendor/hal_audio.te
+ create mode 100644 sepolicy/vendor/hal_drm_widevine.te
+ create mode 100644 sepolicy/vendor/los-tv.te
  rename wireless-regdb/{Android.bp.bak => Android.bp} (100%)
  create mode 100644 wireless-regdb/regulatory.db
  create mode 100644 wireless-regdb/regulatory.db.p7s
@@ -761,10 +780,10 @@ index 0000000..d9c3593
 +finish 0
 diff --git a/addon/los-tv-addon.sh b/addon/los-tv-addon.sh
 new file mode 100644
-index 0000000..75f130b
+index 0000000..44e19bb
 --- /dev/null
 +++ b/addon/los-tv-addon.sh
-@@ -0,0 +1,684 @@
+@@ -0,0 +1,696 @@
 +#!/system/bin/sh
 +#
 +# los-tv: установка проприетарных компонентов (Widevine + NDK translation).
@@ -892,6 +911,13 @@ index 0000000..75f130b
 +    rmdir "$1" 2>/dev/null
 +}
 +
++find_lib64() {
++    # Ищем 64-битную библиотеку: сначала в lib64, затем где угодно.
++    f=$(find "$WORK/mnt" -path "*/lib64/*" -name "$1" -print -quit 2>/dev/null)
++    [ -n "$f" ] || f=$(find "$WORK/mnt" -name "$1" -print -quit 2>/dev/null)
++    printf "%s\n" "$f"
++}
++
 +extract_widevine() {
 +    zip=$1
 +    if [ -f "$OUT/widevine/lib64/libwvaidl.so" ] && \
@@ -975,7 +1001,7 @@ index 0000000..75f130b
 +    loop_mount "$WORK/vendor.raw.img" 0 0 erofs "$WORK/mnt"
 +
 +    mkdir -p "$OUT/widevine/lib64" "$OUT/widevine/bin/hw" || die "mkdir $OUT"
-+    lib=$(find "$WORK/mnt" -name libwvaidl.so -print -quit 2>/dev/null)
++    lib=$(find_lib64 libwvaidl.so)
 +    hal=$(find "$WORK/mnt" -name android.hardware.drm-service-lazy.widevine -print -quit 2>/dev/null)
 +    [ -n "$lib" ] || die "libwvaidl.so не найден"
 +    [ -n "$hal" ] || die "HAL widevine не найден"
@@ -986,8 +1012,8 @@ index 0000000..75f130b
 +
 +    log "монтирую system.raw.img (EROFS)"
 +    loop_mount "$WORK/system.raw.img" 0 0 erofs "$WORK/mnt"
-+    proto=$(find "$WORK/mnt" -name libprotobuf-cpp-lite.so -print -quit 2>/dev/null)
-+    drm=$(find "$WORK/mnt" -name android.hardware.drm-V1-ndk.so -print -quit 2>/dev/null)
++    proto=$(find_lib64 libprotobuf-cpp-lite.so)
++    drm=$(find_lib64 android.hardware.drm-V1-ndk.so)
 +    [ -n "$proto" ] || die "libprotobuf-cpp-lite.so не найден"
 +    [ -n "$drm" ] || die "android.hardware.drm-V1-ndk.so не найден"
 +    cp "$proto" "$OUT/widevine/lib64/" || die "cp libprotobuf-cpp-lite.so"
@@ -1397,10 +1423,15 @@ index 0000000..75f130b
 +    chmod 644 "$sys/vendor/etc/vintf/manifest/manifest_android.hardware.drm-service.widevine.xml"
 +
 +    log "выставляю SELinux-метки"
-+    chcon u:object_r:vendor_file:s0 "$sys/vendor/lib64/libwvaidl.so" \
-+        "$sys/vendor/bin/hw/android.hardware.drm-service-lazy.widevine" \
-+        "$sys/vendor/etc/init/android.hardware.drm-service-lazy.widevine.rc" \
++    chcon u:object_r:vendor_file:s0 "$sys/vendor/lib64/libwvaidl.so" 2>/dev/null
++    chcon u:object_r:vendor_configs_file:s0 \
++        "$sys/vendor/etc/init/android.hardware.drm-service-lazy.widevine.rc" 2>/dev/null
++    chcon u:object_r:vendor_configs_file:s0 \
 +        "$sys/vendor/etc/vintf/manifest/manifest_android.hardware.drm-service.widevine.xml" 2>/dev/null
++    # HAL-бинарь — отдельный exec-тип AIDL-DRM: init сделает переход в домен
++    # hal_drm_clearkey_aidl (system смонтирован ro, restorecon в init не может).
++    chcon u:object_r:hal_drm_clearkey_aidl_exec:s0 \
++        "$sys/vendor/bin/hw/android.hardware.drm-service-lazy.widevine" 2>/dev/null
 +    chcon u:object_r:system_file:s0 "$sys/lib64/libndk_translation.so" \
 +        "$sys/lib64/libberberis_exec_region.so" 2>/dev/null
 +
@@ -13995,7 +14026,7 @@ similarity index 100%
 rename from bootctrl/Android.bp.bak
 rename to bootctrl/Android.bp
 diff --git a/device.mk b/device.mk
-index 682a708..08b1788 100644
+index 682a708..f70c74d 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14096,7 +14127,7 @@ index 682a708..08b1788 100644
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
-@@ -285,10 +281,105 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+@@ -285,10 +281,120 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
  
  $(call inherit-product-if-exists, hardware/x86power/x86power.mk)
  
@@ -14205,6 +14236,21 @@ index 682a708..08b1788 100644
 +    display-fixups-rc \
 +    tvres-notify.sh \
 +    tvres-notify-rc
++
++# los-tv: диагностический логгер /dev/kmsg (только для отладки)
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/kmsglog/los-tv-kmsglog:$(TARGET_COPY_OUT_SYSTEM)/bin/los-tv-kmsglog \
++    $(LOCAL_PATH)/kmsglog/los-tv-kmsglog.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/los-tv-kmsglog.rc
++
++# los-tv: EGL под enforcing (init.sh не может запуститься: init+execute_no_trans запрещён)
++PRODUCT_VENDOR_PROPERTIES += ro.hardware.egl=mesa
++
++# los-tv: slow x86 TV hardware; allow PM/boot phases to exceed the
++# default 60s watchdog window without killing system_server.
++PRODUCT_PROPERTY_OVERRIDES += ro.hw_timeout_multiplier=3
++
++# los-tv: boot animation is enabled (was disabled while debugging the
++# enforcing bring-up). debug.sf.nobootanimation=1 must not be set.
 diff --git a/dhcp_recovery/Android.bp.bak b/dhcp_recovery/Android.bp
 similarity index 100%
 rename from dhcp_recovery/Android.bp.bak
@@ -83380,6 +83426,31 @@ index 0000000..2405853
 +VT 0401  Composite Video
 +VT 0402  S-Video
 +VT 0403  Component Video
+diff --git a/init.fstab.sh b/init.fstab.sh
+index 1813867..fee06ae 100644
+--- a/init.fstab.sh
++++ b/init.fstab.sh
+@@ -6,7 +6,11 @@
+ 
+ function map_device_link() {
+   # shellcheck disable=2012,2046
+-  mknod /dev/block/by-name/"${1#'#>'}" b "$2" "$3"
++  name="${1#'#>'}"
++  # LosTV: renaming a block device is neverallowed under SELinux, so create
++  # the misc device node under its final name right away.
++  [ "$name" = "misc" ] && name="misc-device"
++  mknod /dev/block/by-name/"$name" b "$2" "$3"
+ }
+ 
+ function init_loop_links() {
+@@ -26,7 +30,6 @@ function init_loop_links() {
+   ln -s /dev/block/by-name/recovery_b /dev/block/by-name/ramdisk-recovery_b
+ 
+   # Handle for misc symlink specifically
+-  mv /dev/block/by-name/misc /dev/block/by-name/misc-device
+   ln -s misc-device /dev/block/by-name/misc
+ }
+ 
 diff --git a/init.recovery.sh b/init.recovery.sh
 index dc7aabc..d5108c0 100644
 --- a/init.recovery.sh
@@ -83580,10 +83651,69 @@ index d150e2f..8f7f988 100644
      ifup ${vendor.recovery.ethernet.dhcp.iface:-eth0}
      start dhcpclient
 diff --git a/init.sh b/init.sh
-index 85013d1..08b19bf 100644
+index 85013d1..4db29a1 100644
 --- a/init.sh
 +++ b/init.sh
-@@ -593,6 +593,38 @@ function init_hal_media()
+@@ -418,6 +418,7 @@ function init_hal_gralloc()
+ 		    if { [[ "$BOARD" != *VirtualBox* ]] && 
+ 				 [ "$HWACCEL" != "0" ]; } || 
+ 				 [ "$HWACCEL" == "1" ]; then
++				echo "los-tv-init: gpu=$GPU GRALLOC=$GRALLOC HWC=$HWC"
+ 				${HWC:+set_property ro.hardware.hwcomposer $HWC}
+ 				set_property ro.hardware.gralloc ${GRALLOC:-gbm}
+ 				set_drm_mode
+@@ -513,15 +514,30 @@ function init_egl()
+ 
+ function init_hal_hwcomposer()
+ {
+-	if [ "$HWACCEL" == "0" ] || 
+-	[[ "$GPU" == *radeon* ]]; then
++	# radeon (pre-GCN/legacy KMS) cannot use drm_hwcomposer (@2.4, atomic),
++	# and the fbdev clone (HWC2OnFbAdapter) copies every frame into /dev/fb0
++	# on the CPU (~200 ms/frame).  Use drmfb-composer instead: legacy KMS
++	# page flip + real DRM vsync.  Gate on radeon so Intel/others keep the
++	# previous behaviour.
++	if [[ "$GPU" == *radeon* ]]; then
++		export HWC_HIDL=${HWC_HIDL:-drmfb}
++	elif [ "$HWACCEL" == "0" ]; then
+ 		export HWC_HIDL=${HWC_HIDL:-default-2.1}
+ 	fi
+ 
++	echo "los-tv-init: HWC_HIDL=$HWC_HIDL"
+ 	case "$HWC_HIDL" in
+ 		drmfb)
++			# fbcon is unbound by the drmfb service itself before its
++			# first page flip (init is not allowed to write sysfs).
+ 			set_property debug.sf.hwc_service_name drmfb
+ 			start vendor.hwcomposer-2-1.drmfb
++			sleep 1
++			if [ "$(getprop init.svc.vendor.hwcomposer-2-1.drmfb)" != "running" ]; then
++				echo "los-tv-init: drmfb unavailable, falling back to fbdev clone"
++				set_property debug.sf.hwc_service_name default_clone
++				start vendor.hwcomposer-2-1-clone
++			fi
+ 			;;
+ 		default-2.1)
+ 			set_property debug.sf.hwc_service_name default_clone
+@@ -579,20 +595,55 @@ function init_hal_media()
+ ## c2.ffmpeg can be able to switch now
+ 	case "$GPU" in
+ 		*virtio_gpu|*virtio-pci|*nouveau|*radeon)
+-			set_property persist.ffmpeg-codec2.pixel_format RGBX_8888
++			set_property persist.vendor.ffmpeg-codec2.pixel_format RGBX_8888
+ 			;;
+ 		*i915|*xe|*amdgpu)
+ 			if [ "$(getprop ro.hardware.gralloc)" != "minigbm" ]; then
+-				set_property persist.ffmpeg-codec2.pixel_format RGBX_8888
++				set_property persist.vendor.ffmpeg-codec2.pixel_format RGBX_8888
+ 			else
+-				set_property persist.ffmpeg-codec2.pixel_format YUV_420
++				set_property persist.vendor.ffmpeg-codec2.pixel_format YUV_420
+ 			fi
+ 			;;
+ 		*)
+-			set_property persist.ffmpeg-codec2.pixel_format RGB_565
++			set_property persist.vendor.ffmpeg-codec2.pixel_format RGB_565
  			;;
  	esac
  
@@ -83595,6 +83725,9 @@ index 85013d1..08b19bf 100644
 +		set_property debug.ffmpeg-codec2.deinterlace none
 +	fi
 +
++	# los-tv: mediaserver registers media.player and media.resource_manager.
++	# Without it ExoPlayer/Jellyfin blocks waiting for resource management.
++	start media
 +}
 +
 +## Radeon only: swap in the tuned codec lists.  They have to be bind-mounted
@@ -83622,7 +83755,15 @@ index 85013d1..08b19bf 100644
  }
  
  function init_hal_vulkan()
-@@ -937,7 +969,11 @@ function do_netconsole()
+@@ -924,6 +975,7 @@ function do_init()
+ 	init_hal_lights
+ 	init_hal_power
+ 	init_hal_sensors
++	echo "los-tv-init: do_init done"
+ 	init_tscal
+ 	init_ril
+ 	init_prepare_ota
+@@ -937,7 +989,11 @@ function do_netconsole()
  
  function do_bootcomplete()
  {
@@ -83635,7 +83776,7 @@ index 85013d1..08b19bf 100644
  
  	init_cpu_governor
  
-@@ -950,7 +986,8 @@ function do_bootcomplete()
+@@ -950,7 +1006,8 @@ function do_bootcomplete()
  			echo on > /sys/devices/pci0000:00/0000:00:15.1/i2c_designware.1/power/control
  			;;
  		VMware*)
@@ -83645,7 +83786,23 @@ index 85013d1..08b19bf 100644
  			;;
  		X80*Power)
  			export POWER_NONBOOT_CPU_OFF=${POWER_NONBOOT_CPU_OFF:-1}
-@@ -1115,6 +1152,9 @@ case "$1" in
+@@ -966,6 +1023,15 @@ function do_bootcomplete()
+ 	# initialize audio in bootcomplete
+ 	init_hal_audio_bootcomplete
+ 
++	# los-tv: media services race with servicemanager at boot.  mediaserver
++	# registers media.player/media.resource_manager (ExoPlayer blocks without
++	# them), mediaextractor is needed by MediaExtractor, and the c2-ffmpeg
++	# service must re-register after servicemanager is up.
++	start media
++	stop mediaextractor
++	stop android-hardware-media-c2-hal
++	start android-hardware-media-c2-hal
++
+ 	# Turn off TSCalibration if property isn't set
+ 	if [ "$(getprop ro.tscal.enable)" == "true" ]; then
+ 		pm enable org.zeroxlab.util.tscal
+@@ -1115,6 +1181,9 @@ case "$1" in
  	kmsg)
  		dmesg -w > /data/kmsg.txt
  		;;
@@ -83656,10 +83813,10 @@ index 85013d1..08b19bf 100644
  		do_init
  		;;
 diff --git a/init.x86.rc b/init.x86.rc
-index c7213ef..e8f2195 100644
+index c7213ef..8a5bade 100644
 --- a/init.x86.rc
 +++ b/init.x86.rc
-@@ -44,6 +44,10 @@ on post-fs
+@@ -44,7 +44,16 @@ on post-fs
      chmod 0664 /dev/ion
      chown system system /dev/ion
  
@@ -83668,9 +83825,23 @@ index c7213ef..e8f2195 100644
 +    exec u:r:init:s0 -- /system/bin/logwrapper /system/bin/sh /system/etc/init.sh apexcodecs
 +
  on post-fs-data
++    # los-tv: HAL Widevine ставится add-on из recovery с меткой vendor_file;
++    # к началу Android перемаркируем его в AIDL-DRM exec-тип, чтобы init
++    # сделал переход в домен hal_drm_clearkey_aidl.
++    restorecon /vendor/bin/hw/android.hardware.drm-service-lazy.widevine
++    restorecon /vendor/etc/init/android.hardware.drm-service-lazy.widevine.rc
      # Create the directories used by the Wireless subsystem
      mkdir /data/vendor/wifi 0771 wifi wifi
-@@ -194,6 +198,12 @@ on property:sys.shutdown.requested=*
+     mkdir /data/vendor/wifi/wpa 0770 wifi wifi
+@@ -116,6 +125,7 @@ service kmsg_fetch /system/bin/sh /system/etc/init.sh kmsg
+ service vendor.boot-mode-selection /vendor/bin/boot-mode-selection.sh ${sys.shutdown.requested}
+     user root
+     group root
++    seclabel u:r:su:s0
+     disabled
+     oneshot
+ 
+@@ -194,6 +204,12 @@ on property:sys.shutdown.requested=*
      start vendor.boot-mode-selection
      wait_for_prop vendor.boot-mode-selection.complete true
  
@@ -83678,7 +83849,7 @@ index c7213ef..e8f2195 100644
 +# sys.powerctl содержит полный запрос: reboot,sideload / reboot,recovery.
 +# initrd удаляет маркеры при следующей загрузке.
 +on shutdown
-+    exec - root root -- /vendor/bin/sh /vendor/bin/los-tv-boot-mode.sh
++    exec u:r:su:s0 root root -- /vendor/bin/sh /vendor/bin/los-tv-boot-mode.sh
 +
  on property:vendor.iptsd.device=*
      restart iptsd
@@ -84185,6 +84356,146 @@ index 0000000..df06138
 +sensor 0x03 GYROSCOPE X
 +sensor 0x04 GYROSCOPE Y
 +sensor 0x05 GYROSCOPE Z
+diff --git a/kmsglog/los-tv-kmsglog b/kmsglog/los-tv-kmsglog
+new file mode 100755
+index 0000000000000000000000000000000000000000..969cc40c636eb2da40b98b1f8d4dbeae2da42454
+GIT binary patch
+literal 9216
+zcmeHNPe@cj82{E>Q;F83LlnUXWr_IKT|Agn?8{bn<58wrr&xB~m#(?H;y%S7axWd`
+z5O|Ev9y%6u5X*Hds-xn;tWzC=NJ#3`srtToGuu;yq+`qnGvA;2ecw0yb}ut;W};S4
+zmCpxCs^BaLuOT8r?hH_FQV4(ubV3czbx<p?)qj@IQW>s(B1<a`4KA3%eln#GvY*oX
+zWS-IrM`6*AQ8EgP2&MF>>w(hVyc%39%JpJ<L|978FxHcn+!yttF)Q~o>x&40(#M1c
+zpfq7gE`M^;)Ni+<XrTOqIQHP^y*LPmM`n*NzuVtubk6lO4+K7TzIps$w>33RGoTsJ
+z3}^;41DXNNfM!55pc&8%Xa+O`iUIT55*?jOW);A~93FDbtLC72WpELF7>M!D0e|dn
+zdHQ;sKQ|ZX3|wLeUuZ(h;wu(k4)~*?^3x0G$N0L%Ut9b|z`t}3L2fdCMfpZFv}!KW
+zVcRSL!!Aoy%X~(88+K@Q{<J8t8RKgK|HjXfMNN)kOf~To7g&qGB_Q^W@%Qn2kEpc8
+zf8d6!7Tf^#oN2cB2lDxv#a9D<tQ6y$7XNDT?+D;85p(Cu#$w!8j-Oh;J-@Mn?X+kH
+zGy|Fe&46Y=GoTsJ3}^;41DXNNfM(#oWFVMMI>}%*Qy2=4<qHXCDseMg7!J~8jOB;n
+z3<<-fHfO4hq8MZaCpqCTu~ZMiv^^#85bf{3)ZfL1lDS;oVfk@8$102U(A(YJ#ZI2L
+zQ<-Frg~CSIXm1O3w5IJ;C_EWzk)gklOxFh0@a@-jTq6d2xKjC^&s+rEAv6MBW;8@Z
+zK)ok8gkA&UNAcdkEA$<Ir+BN37yBY!IKWnFj3G!(-Z0uBkw_H^2|*MjY$6#|E)8H5
+zZe^Wh3bixg>JeojYql|*n>13BnXz<RCJlyTPdi{t<V67kOM)?!&t~nMvvn8$>>a_(
+zy*Q8|A?jU&dhbAdc!l04c*Q`6ev`^u2g$Q~ccJ)JIfV5}2RalBs~}$d2w|?OyyI|P
+zfhAMbp?jlR9Q0m-ME(9nCR_lecXq+VIMr&G>q?C>*E*pBQWKWMs}*<diaXzDu6`(k
+s#4+uW_DVwkKax5eYVRT-r%01)Y~PpatFQ;q*eQQp=F<h6SGMQ>20E<eIRF3v
+
+literal 0
+HcmV?d00001
+
+diff --git a/kmsglog/los-tv-kmsglog.c b/kmsglog/los-tv-kmsglog.c
+new file mode 100644
+index 0000000..dc24971
+--- /dev/null
++++ b/kmsglog/los-tv-kmsglog.c
+@@ -0,0 +1,60 @@
++/*
++ * los-tv-kmsglog: минимальный логгер /dev/kmsg -> /data/misc/los-tv-kmsg.log
++ * Freestanding (без libc), чтобы попасть в system image минимальным размером.
++ */
++static long sc(long n, long a, long b, long c) {
++    long r;
++    __asm__ volatile("syscall"
++                     : "=a"(r)
++                     : "a"(n), "D"(a), "S"(b), "d"(c)
++                     : "rcx", "r11", "memory");
++    return r;
++}
++
++static long sys_open(const char *p, long flags, long mode) {
++    return sc(2, (long)p, flags, mode);
++}
++static long sys_read(long fd, void *buf, long n) {
++    return sc(0, fd, (long)buf, n);
++}
++static long sys_write(long fd, const void *buf, long n) {
++    return sc(1, fd, (long)buf, n);
++}
++static void sys_exit(long code) {
++    sc(60, code, 0, 0);
++    for (;;) { }
++}
++static void puts_fd(long fd, const char *s) {
++    long n = 0;
++    while (s[n]) n++;
++    sys_write(fd, s, n);
++}
++
++void _start(void) {
++    static char buf[8192];
++    long out = sys_open("/data/misc/los_tv_kmsg/kmsg.log", 0x241 /*WRONLY|CREAT|TRUNC*/, 0644);
++    if (out < 0) sys_exit(2);
++
++    puts_fd(out, "===== los-tv-kmsglog start =====\n");
++    sc(74, out, 0, 0); /* fsync */
++
++    long in = sys_open("/dev/kmsg", 0, 0);
++    if (in < 0) {
++        puts_fd(out, "ERROR: cannot open /dev/kmsg\n");
++        sc(74, out, 0, 0);
++        sys_exit(1);
++    }
++
++    for (;;) {
++        long n = sys_read(in, buf, sizeof(buf));
++        if (n > 0) {
++            long off = 0;
++            while (off < n) {
++                long w = sys_write(out, buf + off, n - off);
++                if (w <= 0) break;
++                off += w;
++            }
++            sc(74, out, 0, 0); /* fsync: пережить watchdog reset */
++        }
++    }
++}
+diff --git a/kmsglog/los-tv-kmsglog.rc b/kmsglog/los-tv-kmsglog.rc
+new file mode 100644
+index 0000000..85c7587
+--- /dev/null
++++ b/kmsglog/los-tv-kmsglog.rc
+@@ -0,0 +1,42 @@
++# los-tv: диагностика — persistent kmsg + logcat (переживают watchdog reset).
++service los-tv-kmsglog /system/bin/los-tv-kmsglog
++    class core
++    user root
++    group root
++    seclabel u:r:los_tv_kmsglog:s0
++
++# los-tv: disabled (the -f logger grew to hundreds of MB across restarts)
++#service los-tv-logcat /system/bin/logcat -b all -v threadtime -f /data/misc/los_tv_kmsg/logcat.log -r 4096 -n 2
++#    class core
++#    user root
++#    group root log
++#    seclabel u:r:los_tv_kmsglog:s0
++
++
++service los-tv-props /system/bin/getprop
++    class core
++    user root
++    group root
++    oneshot
++    stdio_to_kmsg
++
++on post-fs-data
++    mkdir /data/misc/los_tv_kmsg 0770 root root
++    start los-tv-kmsglog
++    start los-tv-props
++    exec - root root -- /system/bin/getprop
++
++# los-tv: make sure the installer service is started; PM blocks (30s per op)
++# when installd never registers.
++on boot
++    start installd
++    start vendor.gatekeeper-1-0
++    start gatekeeperd
++    start storaged
++
++# los-tv: record service states for diagnostics (visible after reboot).
++on property:init.svc.zygote=running
++    write /data/misc/los_tv_kmsg/svc_installd.txt ${init.svc.installd}
++    write /data/misc/los_tv_kmsg/svc_zygote.txt ${init.svc.zygote}
++    write /data/misc/los_tv_kmsg/svc_sf.txt ${init.svc.surfaceflinger}
++    write /data/misc/los_tv_kmsg/svc_storaged.txt ${init.svc.storaged}
 diff --git a/libinit/Android.bp.bak b/libinit/Android.bp
 similarity index 100%
 rename from libinit/Android.bp.bak
@@ -85422,10 +85733,10 @@ index 0000000..5fc44f4
 +</permissions>
 diff --git a/prebuilt/Android.bp b/prebuilt/Android.bp
 new file mode 100644
-index 0000000..a9469e6
+index 0000000..3d986f9
 --- /dev/null
 +++ b/prebuilt/Android.bp
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,233 @@
 +// Предустановленные сторонние приложения для ТВ-бокса Mi TV Stick.
 +// Добавлены 2026-10-11.
 +//
@@ -85657,6 +85968,8 @@ index 0000000..a9469e6
 +    filename: "los-tv-addon-state.rc",
 +    sub_dir: "init",
 +}
++
++
 diff --git a/prebuilt/README.md b/prebuilt/README.md
 new file mode 100644
 index 0000000..f5bf1b9
@@ -88781,6 +89094,35 @@ index 02aa77e..0b21a09 100644
  sh_binary {
      name: "set_iptsd_device",
      src: "set_iptsd_device",
+diff --git a/scripts/boot-mode-selection.sh b/scripts/boot-mode-selection.sh
+index 2a7eccd..82daf65 100644
+--- a/scripts/boot-mode-selection.sh
++++ b/scripts/boot-mode-selection.sh
+@@ -27,15 +27,22 @@ if [ ! -w "$CFG_PATH" ]; then
+ fi
+ 
+ # Determine boot mode from first argument
+-REASON=$(echo -n "$1" | cut -c 2-)
++REASON="$1"
+ case "$REASON" in
+-    recovery|recovery-update)
++    *recovery*)
+         new_mode="recovery"
+         ;;
+     *)
+         new_mode="normal"
+         ;;
+ esac
++# los-tv: GRUB header suffix marker (removed by initrd on next boot)
++GRUBDIR=$(dirname "$CFG_PATH")
++case "$new_mode" in
++    recovery) touch "$GRUBDIR/mode-recovery" ;;
++    *) rm -f "$GRUBDIR/mode-recovery" ;;
++esac
++
+ 
+ # First pass: Try to modify androidboot.mode
+ found_android=0
 diff --git a/scripts/los-tv-boot-mode.sh b/scripts/los-tv-boot-mode.sh
 new file mode 100644
 index 0000000..eceb5ad
@@ -88846,6 +89188,415 @@ index f4f663a..9c74150 100644
  
  #for hbm
  mkdirat: 1
+diff --git a/sepolicy/celadon/thermal/thermal-daemon/hal_thermal_intel.te b/sepolicy/celadon/thermal/thermal-daemon/hal_thermal_intel.te
+index fd113f9..06389af 100644
+--- a/sepolicy/celadon/thermal/thermal-daemon/hal_thermal_intel.te
++++ b/sepolicy/celadon/thermal/thermal-daemon/hal_thermal_intel.te
+@@ -25,3 +25,6 @@ allowxperm hal_thermal_intel self:can_socket ioctl {
+ #For vsock communication with host thermal utility
+ allow hal_thermal_intel self:{ socket } { create read write listen accept bind connect };
+ allow hal_thermal_intel unlabeled:{ socket } { getopt read write shutdown };
++
++# los-tv: чтение hwmon/name сенсоров (enforcing)
++allow hal_thermal_intel sysfs:file r_file_perms;
+diff --git a/sepolicy/plat_private/file_contexts b/sepolicy/plat_private/file_contexts
+index bd8135f..9c20d4b 100644
+--- a/sepolicy/plat_private/file_contexts
++++ b/sepolicy/plat_private/file_contexts
+@@ -1,11 +1,42 @@
+ # surfaceflinger
+ /dev/dri(/.*)?               u:object_r:gpu_device:s0
+ /dev/tty0                    u:object_r:gpu_device:s0
+-/(vendor|system/vendor)/lib{64}?/libgbm_mesa_wrapper.so     u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libgbm_mesa_wrapper\.so     u:object_r:same_process_hal_file:s0
+ /(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.allocator@4\.0-service\.minigbm_gbm_mesa        u:object_r:hal_graphics_allocator_default_exec:s0
+-/(vendor|system/vendor)/lib(64)?/libgallium_dri\.so							u:object_r:same_process_hal_file:s0
+ /(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.composer@2\.1-service-clone              u:object_r:hal_graphics_composer_default_exec:s0
+ 
+ # Files in rootfs
+ /boot(/.*)?       u:object_r:bootdir_file:s0
+ /boot/efi(/.*)?       u:object_r:esp_file:s0
++/(vendor|system/vendor)/bin/hw/android\.hardware\.drm-service-lazy\.widevine u:object_r:hal_drm_clearkey_aidl_exec:s0
++
++# los-tv: x86 mesa/drm/GBM/vulkan — библиотеки, загружаемые в system-процессы
++/(vendor|system/vendor)/lib(64)?/libLLVM[0-9]*\.so        u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libdrm(_intel|_radeon|_amdgpu)?\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libgallium_dri\.so        u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libgbm_mesa\.so           u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/dri_gbm\.so               u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/hw/gralloc\..*\.so       u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/(hw/)?vulkan\.pastel\.so  u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/hw/android\.hardware\.sensors@1\.0-impl\.so u:object_r:same_process_hal_file:s0
++/system/bin/los-tv-kmsglog u:object_r:los_tv_kmsglog_exec:s0
++/data/misc/los_tv_kmsg(/.*)? u:object_r:los_tv_kmsg_data_file:s0
++/(vendor|system/vendor)/lib(64)?/libui\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/android\.hardware\.graphics\.allocator@.*\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/hw/android\.hardware\.graphics\.mapper@.*\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/hw/android\.hardware\.graphics\.allocator@.*\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libminigbm.*\.so u:object_r:same_process_hal_file:s0
++/(vendor|system/vendor)/lib(64)?/libgrallocusage\.so u:object_r:same_process_hal_file:s0
++
++# los-tv: x86 light HAL (AOSP rules only cover .lineage/.example)
++/(vendor|system/vendor)/bin/hw/android\.hardware\.light-service\.x86 u:object_r:hal_light_default_exec:s0
++
++# los-tv: x86 vendor HAL variants not covered by AOSP file_contexts.
++/(vendor|system/vendor)/bin/hw/android\.hardware\.gatekeeper@1\.0-service.* u:object_r:hal_gatekeeper_default_exec:s0
++/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.allocator@4\.0-service.* u:object_r:hal_graphics_allocator_default_exec:s0
++/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.composer@2\.1-drmfb-service u:object_r:hal_graphics_composer_default_exec:s0
++/(vendor|system/vendor)/bin/hw/android\.hardware\.media\.c2-ffmpeg-service u:object_r:mediacodec_exec:s0
++
++# los-tv: /vendor/odm/etc/selinux (odm_seapp_contexts, odm_mac_permissions.xml)
++# must be readable by zygote/system_server; vendor_file is not.
++/(vendor|system/vendor)/odm/etc/selinux(/.*)? u:object_r:vendor_configs_file:s0
+diff --git a/sepolicy/plat_private/genfs_contexts b/sepolicy/plat_private/genfs_contexts
+index 3d0ace5..5fd7453 100644
+--- a/sepolicy/plat_private/genfs_contexts
++++ b/sepolicy/plat_private/genfs_contexts
+@@ -1,2 +1,7 @@
+-genfscon virtiofs / u:object_r:virtiofs:s0
+-genfscon ntfs3 / u:object_r:ntfs3:s0
++# los-tv: GPU PCI device attributes (vendor/device/uevent) are read by Mesa
++# inside app processes to pick the hardware driver (radeonsi/i915).  The
++# generic sysfs label denies that, so apps fell back to llvmpipe (software)
++# and the whole UI crawled.  Label the GPU PCI functions as sysfs_gpu;
++# appdomain already has read-only access to sysfs_gpu.
++genfscon sysfs /devices/pci0000:00/0000:00:01.0 u:object_r:sysfs_gpu:s0
++genfscon sysfs /devices/pci0000:00/0000:00:02.0 u:object_r:sysfs_gpu:s0
+diff --git a/sepolicy/plat_private/los-tv-init.te b/sepolicy/plat_private/los-tv-init.te
+new file mode 100644
+index 0000000..82ada27
+--- /dev/null
++++ b/sepolicy/plat_private/los-tv-init.te
+@@ -0,0 +1,77 @@
++# los-tv: init runs system binaries/scripts without a domain transition
++# (logwrapper, init.sh, HAL services with system_file binaries).
++allow init system_file:file { execute execute_no_trans };
++allow init shell_exec:file { execute execute_no_trans read open getattr map };
++allow init toolbox_exec:file { execute execute_no_trans read open getattr map };
++allow init exported_default_prop:property_service set;
++allow init system_bootstrap_lib_file:dir r_dir_perms;
++allow init system_bootstrap_lib_file:file r_file_perms;
++# init.sh uses the `start`/`stop` toybox applets, which run in the toolbox domain.
++allow toolbox property_socket:sock_file write;
++allow toolbox ctl_default_prop:property_service set;
++allow toolbox ctl_start_prop:property_service set;
++allow toolbox ctl_stop_prop:property_service set;
++allow toolbox system_bootstrap_lib_file:dir r_dir_perms;
++allow toolbox system_bootstrap_lib_file:file r_file_perms;
++# In case ctl props are set directly from the init domain.
++allow init ctl_default_prop:property_service set;
++allow init ctl_start_prop:property_service set;
++allow init ctl_stop_prop:property_service set;
++
++# Kernel module autoload (r8169 PHY, snd-hda-codec): request_module was denied,
++# so the NIC never appeared and adb over TCP was unreachable.
++allow kernel self:system module_request;
++
++# Allow init to drop a boot snapshot into the diagnostic directory.
++allow init los_tv_kmsg_data_file:dir { search write add_name };
++allow init los_tv_kmsg_data_file:file create_file_perms;
++
++# request_module() runs /system/bin/modprobe in the kernel domain:
++# sys_module capability, bootstrap/system libs, and system_lib_file module_load.
++allow kernel self:capability sys_module;
++allow kernel system_bootstrap_lib_file:dir r_dir_perms;
++allow kernel system_bootstrap_lib_file:file r_file_perms;
++allow kernel system_bootstrap_lib_file:file execute;
++allow kernel system_lib_file:file r_file_perms;
++allow kernel system_lib_file:file execute;
++allow kernel proc_modules:file r_file_perms;
++
++# Bootstrap binaries need execute on bootstrap lib segments.
++allow init system_bootstrap_lib_file:file execute;
++allow toolbox system_bootstrap_lib_file:file execute;
++
++# setprop/getprop/start run as toybox (toolbox); property service is init.
++allow toolbox init:unix_stream_socket connectto;
++
++# init.sh sets debug.sf.hwc_service_name (debug_prop), gralloc.gbm.device
++# and other vendor props; the neverallow exempts init.
++allow init debug_prop:property_service set;
++allow init vendor_default_prop:property_service set;
++
++# Usermode helper (modprobe) executes system binaries in the kernel domain.
++allow kernel system_file:file execute_no_trans;
++allow kernel system_file:dir r_dir_perms;
++
++# /system/bin/modprobe is a symlink to toybox (toolbox_exec), so the
++# kernel usermode helper needs execute_no_trans on toolbox_exec.
++allow kernel toolbox_exec:file { execute execute_no_trans r_file_perms };
++
++# installd restores top-level app data dirs (system_data_file -> app data).
++allow installd system_data_file:dir { relabelto relabelfrom };
++
++# init.fstab.sh (x86 image boot) creates /dev/block/by-name nodes and
++# symlinks with mknod/ln/mv from the init domain.
++
++# init.fstab.sh creates /dev/block/by-name nodes/symlinks from init.
++# Renaming blk_file is neverallowed, so the script creates misc-device directly.
++allow init block_device:dir { search write add_name };
++allow init block_device:blk_file { create getattr setattr };
++allow init block_device:lnk_file { create getattr read };
++
++# mknod of misc-device resolves to misc_block_device via type_transition.
++allow init misc_block_device:blk_file { create getattr setattr };
++
++# los-tv: init.sh apexcodecs bind-mounts the radeon codec lists over
++# /vendor/etc and over the media.swcodec apex list.
++allow init vendor_configs_file:file { ioctl mounton };
++allow init system_file:file mounton;
+diff --git a/sepolicy/plat_private/los-tv-kmsglog.te b/sepolicy/plat_private/los-tv-kmsglog.te
+new file mode 100644
+index 0000000..93fd885
+--- /dev/null
++++ b/sepolicy/plat_private/los-tv-kmsglog.te
+@@ -0,0 +1,27 @@
++# los-tv: диагностический логгер /dev/kmsg -> /data/local/tmp/los-tv-kmsg.log
++type los_tv_kmsglog, domain, coredomain;
++type los_tv_kmsglog_exec, exec_type, system_file_type, file_type;
++init_daemon_domain(los_tv_kmsglog)
++
++type los_tv_kmsg_data_file, file_type, core_data_file_type;
++
++allow los_tv_kmsglog kmsg_device:chr_file r_file_perms;
++
++# чтение /dev/kmsg требует CAP_SYSLOG; root нужен DAC override для режима 0400
++allow los_tv_kmsglog self:capability2 syslog;
++allow los_tv_kmsglog kernel:system syslog_read;
++
++
++allow los_tv_kmsglog los_tv_kmsg_data_file:dir { search write add_name };
++type_transition los_tv_kmsglog system_data_file:file los_tv_kmsg_data_file "kmsg.log";
++allow los_tv_kmsglog los_tv_kmsg_data_file:file create_file_perms;
++
++# чтение логов (logcat) через сокеты logd
++allow los_tv_kmsglog logdr_socket:sock_file write;
++allow los_tv_kmsglog logdw_socket:sock_file write;
++allow los_tv_kmsglog logd_socket:sock_file write;
++
++# logcat — отдельный exec-тип; нужен entrypoint для запуска из нашего домена
++allow los_tv_kmsglog logcat_exec:file { entrypoint execute read open getattr map };
++
++allow los_tv_kmsglog logd:unix_stream_socket connectto;
+diff --git a/sepolicy/plat_private/los-tv.te b/sepolicy/plat_private/los-tv.te
+new file mode 100644
+index 0000000..7278b1f
+--- /dev/null
++++ b/sepolicy/plat_private/los-tv.te
+@@ -0,0 +1,70 @@
++# los-tv: x86 mesa/drm/vulkan-библиотеки помечены same_process_hal_file и
++# загружаются в system-процессы (full-treble coredomain по умолчанию их не видит).
++allow { surfaceflinger zygote system_server bootanim mediaswcodec } same_process_hal_file:file r_file_perms;
++allow { surfaceflinger zygote system_server bootanim mediaswcodec } same_process_hal_file:file execute;
++allow { surfaceflinger zygote system_server bootanim mediaswcodec } same_process_hal_file:dir r_dir_perms;
++
++# Skia RenderEngine JIT needs execmem; without it SF gets SIGSEGV
++# (SEGV_ACCERR) in RenderEngine and never registers SurfaceFlingerAIDL.
++allow surfaceflinger self:process execmem;
++
++# BootAnimation uses Skia; without execmem its rendering is slow/broken.
++allow bootanim self:process execmem;
++
++# init.fstab.sh creates /dev/block/by-name/misc-device via mknod.
++# Give it the same type AOSP uses for the misc partition so the boot
++# control HAL (hal_bootctl_default) may read/write it.
++type_transition init block_device:blk_file misc_block_device "misc-device";
++
++# Mesa/gbm identifies the radeon GPU via sysfs; without it mesa falls
++# back to llvmpipe (software) and SurfaceFlinger burns CPU.
++allow surfaceflinger sysfs:file r_file_perms;
++allow surfaceflinger udmabuf_device:chr_file rw_file_perms;
++
++# BootAnimation needs the same mesa/gbm GPU discovery as SurfaceFlinger.
++# With sysfs denied mesa falls back (artifacts), and udmabuf/memfd writes
++# are refused while it builds frames.
++allow bootanim sysfs:file r_file_perms;
++allow bootanim udmabuf_device:chr_file rw_file_perms;
++allow bootanim tmpfs:file write;
++
++# system services read vendor/debug properties on hot paths (property lookups
++# otherwise fail and are retried, adding latency).
++allow system_suspend sysfs:file r_file_perms;
++allow { system_server network_stack apexd } kernel:system module_request;
++
++# GPU PCI directory is labelled sysfs_gpu; traversing it needs dir search.
++allow { surfaceflinger bootanim } sysfs_gpu:dir r_dir_perms;
++allow appdomain sysfs_gpu:dir r_dir_perms;
++
++# Software codec output buffers / GPU detection in init.
++allow mediaswcodec udmabuf_device:chr_file rw_file_perms;
++allow init gpu_device:chr_file r_file_perms;
++
++# Video/audio buffers: udmabuf and ashmem memfds (system-side attributes).
++allow hal_graphics_allocator udmabuf_device:chr_file rw_file_perms;
++allow hal_audio tmpfs:file rw_file_perms;
++
++# mediaextractor reads the seccomp policy from the flattened media APEX.
++allow mediaextractor system_file:file r_file_perms;
++allow mediaextractor system_seccomp_policy_file:file r_file_perms;
++
++# sysfs_gpu is the GPU PCI device; thermal/codec probe it too.
++allow hal_thermal sysfs_gpu:dir r_dir_perms;
++allow hal_thermal sysfs_gpu:file r_file_perms;
++allow mediaswcodec sysfs_gpu:dir r_dir_perms;
++allow mediaswcodec sysfs_gpu:file r_file_perms;
++
++# mediaextractor opens the seccomp policy under the media APEX.
++allow mediaextractor system_file:dir r_dir_perms;
++allow mediaextractor system_seccomp_policy_file:dir r_dir_perms;
++
++# libui MemoryHeapBase / allocator memfds are generic tmpfs files.
++allow appdomain tmpfs:file rw_file_perms;
++allow hal_graphics_allocator tmpfs:file rw_file_perms;
++
++# los-tv: c2-ffmpeg runs in the mediacodec domain and needs the app
++# MessageQueue memfd plus persist.ffmpeg-codec2.* (default_prop).
++
++# c2-ffmpeg reads persist.ffmpeg-codec2.pixel_format; init.sh sets it.
++set_prop(init, vendor_ffmpeg_prop)
+diff --git a/sepolicy/plat_private/surfaceflinger.te b/sepolicy/plat_private/surfaceflinger.te
+index 8f936ca..f88ba8f 100644
+--- a/sepolicy/plat_private/surfaceflinger.te
++++ b/sepolicy/plat_private/surfaceflinger.te
+@@ -2,23 +2,4 @@ allow surfaceflinger surfaceflinger_tmpfs:file { map };
+ allow surfaceflinger tmpfs:lnk_file { read };
+ allow surfaceflinger self:capability { sys_tty_config };
+ 
+-allowxperm surfaceflinger gpu_device:chr_file ioctl {
+-	0x5605
+-	0x6409
+-	0x640a
+-	0x640b
+-	0x641e
+-	0x641f
+-	0x6457
+-	0x6458
+-	0x645b
+-	0x645e
+-	0x645f
+-	0x6461
+-	0x6462
+-	0x6469
+-	0x6466
+-	0x646c
+-	0x64a2
+-	0x64b0
+-};
++
+diff --git a/sepolicy/plat_private/ueventd.te b/sepolicy/plat_private/ueventd.te
+new file mode 100644
+index 0000000..32fce77
+--- /dev/null
++++ b/sepolicy/plat_private/ueventd.te
+@@ -0,0 +1,7 @@
++# los-tv: modules live in /system/lib/modules (system_lib_file).
++allow ueventd system_lib_file:file r_file_perms;
++allow ueventd system_lib_file:system module_load;
++
++# ueventd requests modalias modules; the kernel usermode helper (modprobe)
++# then runs in the kernel domain (allowed in los-tv-init.te).
++allow ueventd kernel:system module_request;
+diff --git a/sepolicy/plat_private/vold.te b/sepolicy/plat_private/vold.te
+new file mode 100644
+index 0000000..450fb62
+--- /dev/null
++++ b/sepolicy/plat_private/vold.te
+@@ -0,0 +1,6 @@
++# los-tv: vold читает /fstab.<product> (system-as-root, метка rootfs).
++allow vold rootfs:file r_file_perms;
++allow { vold toolbox kcmdlinectrl } tmpfs:file r_file_perms;
++
++# misctrl reads /fstab.<product> from the initrd (tmpfs) to set up misc.
++allow misctrl tmpfs:file r_file_perms;
+diff --git a/sepolicy/vendor/hal_audio.te b/sepolicy/vendor/hal_audio.te
+new file mode 100644
+index 0000000..61bf786
+--- /dev/null
++++ b/sepolicy/vendor/hal_audio.te
+@@ -0,0 +1,7 @@
++
++
++# los-tv: audio HAL FMQ uses libcutils ashmem->memfd on kernels without
++# /dev/ashmem; the probe ftruncate()s a tmpfs memfd and queries its size.
++allow hal_audio_default tmpfs:file rw_file_perms;
++allow hal_audio_default tmpfs:file setattr;
++allowxperm hal_audio_default tmpfs:file ioctl { ASHMEM_GET_SIZE };
+diff --git a/sepolicy/vendor/hal_drm_widevine.te b/sepolicy/vendor/hal_drm_widevine.te
+new file mode 100644
+index 0000000..a930561
+--- /dev/null
++++ b/sepolicy/vendor/hal_drm_widevine.te
+@@ -0,0 +1,12 @@
++# los-tv: Widevine AIDL HAL (запускается в hal_drm_clearkey_aidl) читает
++# libwvaidl/libprotobuf из /vendor/lib64 (метка vendor_file).
++allow hal_drm_clearkey_aidl vendor_file:file r_file_perms;
++allow hal_drm_clearkey_aidl vendor_file:dir r_dir_perms;
++
++# Widevine L3 stores its device certificate / provisioning data here:
++# /data/vendor/mediadrm/IDM<uid>/L3/*.dat (vendor_data_file).
++allow hal_drm_clearkey_aidl vendor_data_file:file rw_file_perms;
++allow hal_drm_clearkey_aidl vendor_data_file:dir rw_dir_perms;
++
++# Widevine decrypts into app-owned memfds.
++allow hal_drm_clearkey_aidl appdomain_tmpfs:file rw_file_perms;
+diff --git a/sepolicy/vendor/los-tv.te b/sepolicy/vendor/los-tv.te
+new file mode 100644
+index 0000000..e18afd8
+--- /dev/null
++++ b/sepolicy/vendor/los-tv.te
+@@ -0,0 +1,41 @@
++typeattribute init system_executes_vendor_violators;
++# los-tv (x86 TV): init/bootanim запускают vendor-бинари HAL (gatekeeper, media.c2).
++# coredomain по neverallow не может открывать vendor_file, поэтому графика
++# помечена same_process_hal_file (см. plat_private/file_contexts).
++allow init vendor_file:file { execute execute_no_trans read open getattr map };
++
++# /fstab.<product> создаётся в initrd (tmpfs): его читают vold и bootctl HAL.
++allow vold tmpfs:file r_file_perms;
++allow hal_bootctl_default tmpfs:file r_file_perms;
++
++# Ядро грузит прошивки radeon из /vendor/firmware и модули из /system/lib/modules.
++allow kernel vendor_file:file r_file_perms;
++allow kernel vendor_file:system firmware_load;
++allow kernel system_lib_file:system module_load;
++
++# x86 light HAL reads/writes /sys/class/backlight (thermal-daemon labels it).
++allow hal_light_default sysfs_backlight_thermal:dir r_dir_perms;
++allow hal_light_default sysfs_backlight_thermal:file rw_file_perms;
++
++# init.sh (toybox) reads DMI for board detection.
++allow toolbox vendor_sysfs_dmi_id:dir r_dir_perms;
++allow toolbox vendor_sysfs_dmi_id:file r_file_perms;
++
++# HIDL command buffer uses ashmem-compat memfds; the HAL server tmpfs
++# type needs the same ashmem ioctls that tmpfs_domain() grants.
++allowxperm hal_graphics_composer_default hal_graphics_composer_server_tmpfs:file ioctl ashmem_ioctls;
++allowxperm hal_graphics_composer_default vndbinder_device:chr_file ioctl unpriv_binder_ioctls;
++
++# The AOSP rule grants getattr/map/read/write/relabelfrom but NOT ioctl;
++# allowxperm alone does not grant the base ioctl permission, so the
++# HIDL command buffer (ashmem-compat memfd) failed to initialize.
++allow hal_graphics_composer_default hal_graphics_composer_server_tmpfs:file ioctl;
++
++# drmfb-composer uses a netlink uevent socket for display hotplug.
++allow hal_graphics_composer_default self:netlink_kobject_uevent_socket create_socket_perms_no_ioctl;
++
++# Graphics HALs probe ro.hardware.* / debug.* vendor properties on startup.
++
++# drmfb-composer unbinds the framebuffer console before taking over the CRTC
++# (fbcon bound makes drmModePageFlip return EINVAL on radeon).
++allow hal_graphics_composer_default sysfs:file w_file_perms;
+diff --git a/sepolicy/vendor/property_contexts b/sepolicy/vendor/property_contexts
+index f9ab975..43bce8f 100644
+--- a/sepolicy/vendor/property_contexts
++++ b/sepolicy/vendor/property_contexts
+@@ -3,3 +3,6 @@ vendor.recovery.ethernet.dhcp.iface		u:object_r:vendor_recovery_ethernet_dhcp_pr
+ 
+ # Net
+ vendor.net.		u:object_r:vendor_net_prop:s0 exact string
++
++# c2-ffmpeg pixel format (radeon RGBX_8888)
++persist.vendor.ffmpeg-codec2.pixel_format	u:object_r:vendor_ffmpeg_prop:s0 exact string
 diff --git a/wireless-regdb/Android.bp.bak b/wireless-regdb/Android.bp
 similarity index 100%
 rename from wireless-regdb/Android.bp.bak

@@ -1,15 +1,17 @@
-From 357fa2c1563c3113b5761fd0ea48f3b50dbd534f Mon Sep 17 00:00:00 2001
+From ec26d8af13186bb397c0066f7606841add592245 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:39 +1000
-Subject: [PATCH] los-tv: c2-ffmpeg: x86 seccomp policies and fixes
+Subject: [PATCH] los-tv: c2-ffmpeg: VA-API, seccomp, vendor pixel format,
+ service context
 
 ---
  codec2/Android.mk                             |  2 +-
  codec2/C2FFMPEGVideoDecodeComponent.cpp       | 50 ++++++++++++++++---
- codec2/C2FFMPEGVideoUtils.cpp                 |  4 +-
+ codec2/C2FFMPEGVideoUtils.cpp                 |  6 +--
+ ...ndroid.hardware.media.c2-ffmpeg-service.rc |  1 +
  ...ndroid.hardware.media.c2-ffmpeg-x86.policy |  1 +
  ...oid.hardware.media.c2-ffmpeg-x86_64.policy |  1 +
- 5 files changed, 48 insertions(+), 10 deletions(-)
+ 6 files changed, 50 insertions(+), 11 deletions(-)
 
 diff --git a/codec2/Android.mk b/codec2/Android.mk
 index 0023d9d..14f768e 100644
@@ -115,9 +117,18 @@ index f82c72e..82a5f6c 100644
  
          vas = vaCreateSurfaces(hwctx->display, mUtils->getVAFormat(),
 diff --git a/codec2/C2FFMPEGVideoUtils.cpp b/codec2/C2FFMPEGVideoUtils.cpp
-index f922cbb..4d40d28 100644
+index f922cbb..696062d 100644
 --- a/codec2/C2FFMPEGVideoUtils.cpp
 +++ b/codec2/C2FFMPEGVideoUtils.cpp
+@@ -22,7 +22,7 @@ namespace android {
+ 
+ C2FFMPEGVideoUtils::C2FFMPEGVideoUtils()
+     : mSwapVAColorRGB(base::GetBoolProperty("persist.ffmpeg-codec2.vaapi_rgb_swap_color", false)),
+-      mOverridePixelFormat(base::GetProperty("persist.ffmpeg-codec2.pixel_format", "YUV_420")),
++      mOverridePixelFormat(base::GetProperty("persist.vendor.ffmpeg-codec2.pixel_format", "YUV_420")),
+       mGrallocName(base::GetProperty("ro.hardware.gralloc", "default")) {
+ }
+ 
 @@ -100,9 +100,9 @@ uint32_t C2FFMPEGVideoUtils::getDRMFOURCCFormat() const {
          case PixelFormatType::RGB_565:
              return DRM_FORMAT_RGB565;
@@ -130,6 +141,18 @@ index f922cbb..4d40d28 100644
          case PixelFormatType::UNKNOWN:
          default:
              break;
+diff --git a/codec2/android.hardware.media.c2-ffmpeg-service.rc b/codec2/android.hardware.media.c2-ffmpeg-service.rc
+index 8807568..12d3885 100644
+--- a/codec2/android.hardware.media.c2-ffmpeg-service.rc
++++ b/codec2/android.hardware.media.c2-ffmpeg-service.rc
+@@ -15,6 +15,7 @@
+ #
+ 
+ service android-hardware-media-c2-hal /vendor/bin/hw/android.hardware.media.c2-ffmpeg-service
++    interface aidl android.hardware.media.c2.IComponentStore/ffmpeg
+     class hal
+     user mediacodec
+     group camera mediadrm drmrpc
 diff --git a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy b/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy
 index 176f7a3..c8c4473 100644
 --- a/codec2/seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy

@@ -24,6 +24,8 @@ external/stagefright-plugins
 external/skia
 external/mesa3d
 device/generic/x86_64_tv
+system/sepolicy
+device/google/atv
 "
 
 rm -rf "$HERE/patches"
