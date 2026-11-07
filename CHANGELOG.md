@@ -6,6 +6,24 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-07 — обновление апстрима LineageOS 23.2 / ASB
+
+- Манифест: влиты LineageOS/android (5 коммитов, ASB-форки: conscrypt,
+  ca-certificates, tinyalsa, broadcom/wlan, android-security-16.0.0_r8)
+  и BassOS (aaropa переведён на Bliss-Bass, перенос отложен).
+- 18 проектов переведены на ASB-форки LineageOS (system/libfmq,
+  libhevc, freetype, conscrypt, incremental_delivery и др.).
+- Прямые LineageOS-проекты: обновлено 28 (приложения, lineage-sdk,
+  telephony и т.д.); org-форки смержены с LineageOS (frameworks/base +79,
+  av +11, Bluetooth +17, core +3, native +1, TvSettings +4, recovery +3,
+  soong +3, hardware/interfaces +4), los-tv-ветки перебазированы.
+- Конфликты разрешены: TvSettings (build_date + OpenGL/Vulkan),
+  recovery (MBR/GPT-чек оставлен x86-фиксом), vendor/lineage (kernel.mk
+  остаётся удалённым), Catapult (null-safety апстрима).
+- Публикация: TV Settings теперь включает поддержку BLE-пультов
+  (раньше терялась из-за `format-patch -1` на многоветочной ветке).
+- Без изменений: AOSP-теги (`android-16.0.0_r4`), mesa 26.0, ядро.
+
 ## 2026-11-04 … 07 — media.swcodec на любом GPU, Bluetooth, microG; Intel H81M под Enforcing
 
 - `init.sh`: `media.swcodec` теперь стартует в общей точке входа

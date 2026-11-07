@@ -1,4 +1,4 @@
-From 801b2557912330e8b08a97e9fe8d1bc25edf8540 Mon Sep 17 00:00:00 2001
+From 5c4df67a7b6389677d1ddd0819cfc4fe37846fd0 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:38 +1000
 Subject: [PATCH] los-tv: init: keep initrd devtmpfs, persist early boot log

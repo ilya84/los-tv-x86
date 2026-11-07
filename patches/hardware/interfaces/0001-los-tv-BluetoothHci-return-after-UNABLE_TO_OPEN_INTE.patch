@@ -1,4 +1,4 @@
-From b537f7d214b4dfa34edb8ff0b230eab221fa6cb8 Mon Sep 17 00:00:00 2001
+From d59ce4536fa907f1b2426c8a833b41ad77fd40d8 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Sat, 7 Nov 2026 20:55:37 +1000
 Subject: [PATCH] los-tv: BluetoothHci: return after UNABLE_TO_OPEN_INTERFACE

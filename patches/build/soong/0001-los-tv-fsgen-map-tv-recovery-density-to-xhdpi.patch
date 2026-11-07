@@ -1,4 +1,4 @@
-From 34a0c0b2f91c7043e739876329b2e706d8d4ef48 Mon Sep 17 00:00:00 2001
+From 0e230c222fb220281c323ed6dbbdd61d0f531c98 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:38 +1000
 Subject: [PATCH] los-tv: fsgen: map tv recovery density to xhdpi

@@ -1,10 +1,17 @@
-From a239e26e773e72d61aa1503a43f5325ee99a7b21 Mon Sep 17 00:00:00 2001
+From 2728fad8c3ed292a6ed2a2a31d2f18353308ac3d Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Tue, 3 Nov 2026 13:38:39 +1000
-Subject: [PATCH] los-tv: TV settings: x86 display/resolution/network defaults
+Date: Sat, 7 Nov 2026 22:46:36 +1000
+Subject: [PATCH] los-tv: TV settings: BLE remotes, x86
+ display/resolution/network defaults
 
+- Add support for custom BLE remotes with uncategorized class 0x1f00
+  (such as Mi TV remotes).
+- x86 display/resolution defaults; keep the "Add accessory" entry
+  visible while Bluetooth is off/unavailable.
 ---
  .../accessories/AccessoriesFragment.java      |  17 ++-
+ .../accessories/BluetoothDevicePairer.java    |   9 +-
+ .../accessories/InputDeviceCriteria.java      |   7 +-
  .../connectivity/EditIpSettingsActivity.java  |   8 ++
  .../EditProxySettingsActivity.java            |   6 +
  .../settings/connectivity/EthernetConfig.java |   4 +-
@@ -20,7 +27,7 @@ Subject: [PATCH] los-tv: TV settings: x86 display/resolution/network defaults
  .../connectivity/setup/ProxyPortState.java    |   4 +-
  .../display/daydream/DaydreamFragment.java    |  16 +++
  .../ResolutionSelectionFragment.java          |  13 ++
- 16 files changed, 266 insertions(+), 19 deletions(-)
+ 18 files changed, 280 insertions(+), 21 deletions(-)
  create mode 100644 Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
 
 diff --git a/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java b/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
@@ -63,6 +70,55 @@ index 0c0be9573..b36bbd0f7 100644
      @Override
      public void onStart() {
          super.onStart();
+diff --git a/Settings/src/com/android/tv/settings/accessories/BluetoothDevicePairer.java b/Settings/src/com/android/tv/settings/accessories/BluetoothDevicePairer.java
+index 665806f43..e41e265a4 100644
+--- a/Settings/src/com/android/tv/settings/accessories/BluetoothDevicePairer.java
++++ b/Settings/src/com/android/tv/settings/accessories/BluetoothDevicePairer.java
+@@ -618,7 +618,11 @@ public class BluetoothDevicePairer {
+         setStatus(STATUS_PAIRING);
+         if (mTarget.getBondState() != BluetoothDevice.BOND_BONDED) {
+             registerLinkStatusReceiver();
+-
++            // manual trusting for Mi TV remotes
++            if (!mAutoMode && mTarget.getBluetoothClass().getMajorDeviceClass() == 0x001f00) {
++                Log.d(TAG, "Target is a custom TV remote (0x001f00), applying pairing confirmation shield.");
++                mTarget.setPairingConfirmation(true);
++            }
+             // create bond (pair) to the device
+             mTarget.createBond();
+         } else {
+@@ -721,6 +725,9 @@ public class BluetoothDevicePairer {
+                     return new BluetoothA2dpConnector(
+                       mContext, mTarget, mOpenConnectionCallback);
+                 }
++            case 0x001f00: // Mi TV remote returns class 0x001f00
++                    return new BluetoothInputDeviceConnector(
++                      mContext, mTarget, mHandler, mOpenConnectionCallback);
+             default:
+                 Log.d(TAG, "Unhandle device class: " + majorDeviceClass);
+                 break;
+diff --git a/Settings/src/com/android/tv/settings/accessories/InputDeviceCriteria.java b/Settings/src/com/android/tv/settings/accessories/InputDeviceCriteria.java
+index 04b8e21a9..8104ffaaa 100644
+--- a/Settings/src/com/android/tv/settings/accessories/InputDeviceCriteria.java
++++ b/Settings/src/com/android/tv/settings/accessories/InputDeviceCriteria.java
+@@ -35,11 +35,16 @@ public class InputDeviceCriteria extends BluetoothDeviceCriteria {
+ 
+     @Override
+     public boolean isMatchingMajorDeviceClass(int majorDeviceClass) {
+-        return majorDeviceClass == BluetoothClass.Device.Major.PERIPHERAL;
++        //return majorDeviceClass == BluetoothClass.Device.Major.PERIPHERAL;
++        return majorDeviceClass == BluetoothClass.Device.Major.PERIPHERAL ||
++               majorDeviceClass == BluetoothClass.Device.Major.UNCATEGORIZED;
+     }
+ 
+     @Override
+     public boolean isMatchingDeviceClass(int majorMinorClass) {
++        if (majorMinorClass == 0x1f00) {
++            return true;
++        }
+         int acceptableDevicesMask = MINOR_DEVICE_CLASS_POINTING | MINOR_DEVICE_CLASS_JOYSTICK |
+                 MINOR_DEVICE_CLASS_GAMEPAD | MINOR_DEVICE_CLASS_KEYBOARD |
+                 MINOR_DEVICE_CLASS_REMOTE;
 diff --git a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java b/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java
 index 5814c6b1f..7e3df98c4 100644
 --- a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java

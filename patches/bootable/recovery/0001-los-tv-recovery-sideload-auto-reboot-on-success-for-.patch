@@ -1,4 +1,4 @@
-From 8a2159babfc2a29a8bbcb693283db066e1995a58 Mon Sep 17 00:00:00 2001
+From 8f378d1302985057db93ccbeb636cb967fac6808 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:38 +1000
 Subject: [PATCH] los-tv: recovery: sideload-auto-reboot-on-success for plain

@@ -1,4 +1,4 @@
-From 8613f98ee03925e1203f0d3de6c42e5ddb48b1ce Mon Sep 17 00:00:00 2001
+From 3a88dfcb74a5902bc5399612f3941a3c688d4a6c Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:39 +1000
 Subject: [PATCH] los-tv: HID: support remotes with many reports (64)
