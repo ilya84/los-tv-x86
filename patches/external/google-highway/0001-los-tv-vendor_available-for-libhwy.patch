@@ -1,0 +1,22 @@
+From 68a00e5bb5049807f92e4976cd45464514daea6f Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: vendor_available for libhwy
+
+Change-Id: Ie52e302acd8326b586ed0205e7a57811ba7e3d2e
+---
+ Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Android.bp b/Android.bp
+index 56cc9bf5..84f25685 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -17,6 +17,7 @@ license {
+ 
+ cc_library {
+     name: "libhwy",
++    vendor_available: true,
+     host_supported: true,
+     sdk_version: "current",
+     stl: "c++_shared",

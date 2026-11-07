@@ -1,0 +1,48 @@
+From bd7a89c152fa6ad7838fe562344ccac3abba9615 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: libstatspull_static for platform, statsd_flags
+ apex_available platform
+
+Change-Id: I2f9b5b1a0b3a3b27b56f164b6724057060e6f9c3
+---
+ flags/Android.bp            |  1 +
+ lib/libstatspull/Android.bp | 16 ++++++++++++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/flags/Android.bp b/flags/Android.bp
+index 24174fff9..3bd1c3907 100644
+--- a/flags/Android.bp
++++ b/flags/Android.bp
+@@ -40,6 +40,7 @@ cc_aconfig_library {
+     min_sdk_version: "30",
+     apex_available: [
+         "com.android.os.statsd",
++        "//apex_available:platform",
+     ],
+     host_supported: true,
+ }
+diff --git a/lib/libstatspull/Android.bp b/lib/libstatspull/Android.bp
+index efba0c4e4..a9e6bbae0 100644
+--- a/lib/libstatspull/Android.bp
++++ b/lib/libstatspull/Android.bp
+@@ -160,3 +160,19 @@ cc_test {
+     require_root: true,
+     min_sdk_version: "30",
+ }
++
++
++cc_library_static {
++    name: "libstatspull_static",
++    defaults: [
++        "libstatspull_defaults",
++    ],
++    static_libs: [
++        "statsd_flags_c_lib",
++    ],
++    stl: "libc++_static",
++    apex_available: [
++        "//apex_available:platform",
++        "com.android.os.statsd",
++    ],
++}

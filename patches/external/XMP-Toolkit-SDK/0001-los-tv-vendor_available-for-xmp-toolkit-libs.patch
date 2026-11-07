@@ -1,0 +1,30 @@
+From efebc3a6309b84d0235090fccb64dcf4fe384082 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: vendor_available for xmp toolkit libs
+
+Change-Id: I3c4e66a9a4619ad5aa739bd25059e400595d2f3f
+---
+ Android.bp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Android.bp b/Android.bp
+index cce5062..2ccaf3c 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -15,6 +15,7 @@ license {
+ 
+ cc_library {
+     name: "zuid_md5",
++    vendor_available: true,
+     host_supported: true,
+     sdk_version: "current",
+     stl: "c++_shared",
+@@ -36,6 +37,7 @@ cc_library {
+ 
+ cc_library {
+     name: "xmp_toolkit_sdk",
++    vendor_available: true,
+     host_supported: true,
+     sdk_version: "current",
+     stl: "c++_shared",

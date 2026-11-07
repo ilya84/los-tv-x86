@@ -23,6 +23,11 @@ frameworks/av
 external/stagefright-plugins
 external/skia
 external/mesa3d
+external/drmfb-composer
+external/XMP-Toolkit-SDK
+external/google-highway
+packages/modules/StatsD
+system/extras
 device/generic/x86_64_tv
 system/sepolicy
 device/google/atv

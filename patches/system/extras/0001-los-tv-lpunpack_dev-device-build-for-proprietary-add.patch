@@ -1,0 +1,48 @@
+From 82040015cce7d28e2dd0c0a4824686bfbddde2ea Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: lpunpack_dev (device build) for proprietary add-on
+
+The recovery-installed add-on unpacks the google_apis super image on
+target, so lpunpack is needed as a device binary (upstream builds it
+host-only).
+
+Change-Id: I04a9d063b28cd0dda137e73e04393c4fcf3a6d81
+---
+ partition_tools/Android.bp | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/partition_tools/Android.bp b/partition_tools/Android.bp
+index f3be9f12..5b2ce61e 100644
+--- a/partition_tools/Android.bp
++++ b/partition_tools/Android.bp
+@@ -189,3 +189,29 @@ cc_binary_host {
+         "-D_FILE_OFFSET_BITS=64",
+     ],
+ }
++
++// Device build of lpunpack: used by the los-tv proprietary add-on installed
++// from recovery, which has to unpack the google_apis super image on target.
++cc_binary {
++    name: "lpunpack_dev",
++    defaults: ["lp_defaults"],
++    srcs: [
++        "lpunpack.cc",
++    ],
++    static_libs: [
++        "liblp",
++        "libbase",
++        "libsparse",
++        "libext4_utils",
++    ],
++    shared_libs: [
++        "liblog",
++        "libcutils",
++        "libcrypto",
++    ],
++    cppflags: [
++        "-D_FILE_OFFSET_BITS=64",
++    ],
++    recovery_available: true,
++    recovery: true,
++}

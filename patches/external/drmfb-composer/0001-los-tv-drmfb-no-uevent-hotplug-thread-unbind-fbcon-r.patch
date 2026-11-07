@@ -1,0 +1,81 @@
+From 4c30ef9aeb73b15b230aefaa590ec723a0228bb9 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: drmfb: no uevent hotplug thread, unbind fbcon, run as
+ root
+
+The hotplug thread needs CAP_NET_ADMIN (HAL neverallow) and busy-loops
+without it.  fbcon must be unbound before drmModePageFlip on radeon.
+Service runs as root to write /sys/class/vtconsole/vtcon1/bind.
+---
+ DrmDevice.cpp                                     |  5 ++++-
+ ...ardware.graphics.composer@2.1-drmfb-service.rc |  4 ++--
+ service.cpp                                       | 15 +++++++++++++++
+ 3 files changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/DrmDevice.cpp b/DrmDevice.cpp
+index 65f6eed..60e062a 100644
+--- a/DrmDevice.cpp
++++ b/DrmDevice.cpp
+@@ -102,7 +102,10 @@ void DrmDevice::enable(DrmCallback *callback) {
+         }
+     }
+ 
+-    mHotplugThread.enable();
++    // los-tv: fixed HDMI TV.  The uevent hotplug thread requires
++    // CAP_NET_ADMIN, which HAL neverallows forbid; without it the thread
++    // busy-loops.  The primary display is detected by update() above.
++    // mHotplugThread.enable();
+ }
+ 
+ void DrmDevice::disable() {
+diff --git a/android.hardware.graphics.composer@2.1-drmfb-service.rc b/android.hardware.graphics.composer@2.1-drmfb-service.rc
+index 6898d72..d8d0a3d 100644
+--- a/android.hardware.graphics.composer@2.1-drmfb-service.rc
++++ b/android.hardware.graphics.composer@2.1-drmfb-service.rc
+@@ -1,9 +1,9 @@
+ service vendor.hwcomposer-2-1.drmfb /vendor/bin/hw/android.hardware.graphics.composer@2.1-drmfb-service
+     interface android.hardware.graphics.composer@2.1::IComposer drmfb
+     class hal animation
+-    user system
++    user root
+     group graphics drmrpc
+-    capabilities SYS_NICE NET_ADMIN
++    capabilities SYS_NICE
+     onrestart restart surfaceflinger
+     writepid /dev/cpuset/system-background/tasks
+     disabled
+diff --git a/service.cpp b/service.cpp
+index 0e3e605..d72176a 100644
+--- a/service.cpp
++++ b/service.cpp
+@@ -19,6 +19,8 @@
+ #include <sched.h>
+ #include <android-base/logging.h>
+ #include <binder/ProcessState.h>
++#include <fcntl.h>
++#include <unistd.h>
+ #include <hidl/HidlTransportSupport.h>
+ #include "DrmComposer.h"
+ 
+@@ -27,7 +29,20 @@ using android::hardware::joinRpcThreadpool;
+ 
+ using android::hardware::graphics::composer::V2_1::drmfb::createDrmComposer;
+ 
++static void unbindFbcon() {
++    // fbcon keeps the framebuffer console bound to the CRTC; on radeon
++    // drmModePageFlip() then fails with EINVAL.  Unbind it before we take
++    // over the display.
++    int fd = open("/sys/class/vtconsole/vtcon1/bind", O_WRONLY);
++    if (fd >= 0) {
++        if (write(fd, "0", 1) != 1)
++            PLOG(WARNING) << "Failed to unbind fbcon";
++        close(fd);
++    }
++}
++
+ int main() {
++    unbindFbcon();
+     // the conventional HAL might start binder services
+     android::ProcessState::initWithDriver("/dev/vndbinder");
+     android::ProcessState::self()->setThreadPoolMaxThreadCount(4);
