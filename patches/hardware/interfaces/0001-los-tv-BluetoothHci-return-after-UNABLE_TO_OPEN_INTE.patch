@@ -1,0 +1,27 @@
+From b537f7d214b4dfa34edb8ff0b230eab221fa6cb8 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 20:55:37 +1000
+Subject: [PATCH] los-tv: BluetoothHci: return after UNABLE_TO_OPEN_INTERFACE
+
+Without a Bluetooth controller (dongle absent/removed) the fd is -1;
+falling through calls WatchFdForNonBlockingReads(-1), trips FD_SET(-1)
+and aborts the HAL in a loop.
+---
+ bluetooth/aidl/default/BluetoothHci.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/bluetooth/aidl/default/BluetoothHci.cpp b/bluetooth/aidl/default/BluetoothHci.cpp
+index 7d92e67bf8..d10c36bf64 100644
+--- a/bluetooth/aidl/default/BluetoothHci.cpp
++++ b/bluetooth/aidl/default/BluetoothHci.cpp
+@@ -196,6 +196,10 @@ void BluetoothHci::initialize(
+     if (mFd < 0) {
+       mState = HalState::READY;
+       cb->initializationComplete(Status::UNABLE_TO_OPEN_INTERFACE);
++      // los-tv: no Bluetooth controller (e.g. dongle removed). Without this
++      // return the code below calls WatchFdForNonBlockingReads(-1), which
++      // trips FD_SET(-1) and aborts the HAL in a loop.
++      return;
+     }
+   }
+ 

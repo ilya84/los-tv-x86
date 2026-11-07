@@ -100,7 +100,7 @@ bash scripts/make-ota.sh
 
 ## Ограничения
 
-- userdebug, SELinux Enforcing (проверено на e3000n 2026-11-05; Intel — следующий шаг);
+- userdebug, SELinux Enforcing (проверено на e3000n 2026-11-05 и Intel H81M 2026-11-07);
 - без шифрования данных;
 - обязательность SSE4.2 не подтверждена (в работе);
 - видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264`+VA-API.

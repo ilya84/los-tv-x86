@@ -1,9 +1,10 @@
-From e64eb02646b7a3df11a6d4c1198759d5359edc01 Mon Sep 17 00:00:00 2001
+From a239e26e773e72d61aa1503a43f5325ee99a7b21 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:39 +1000
 Subject: [PATCH] los-tv: TV settings: x86 display/resolution/network defaults
 
 ---
+ .../accessories/AccessoriesFragment.java      |  17 ++-
  .../connectivity/EditIpSettingsActivity.java  |   8 ++
  .../EditProxySettingsActivity.java            |   6 +
  .../settings/connectivity/EthernetConfig.java |   4 +-
@@ -19,9 +20,49 @@ Subject: [PATCH] los-tv: TV settings: x86 display/resolution/network defaults
  .../connectivity/setup/ProxyPortState.java    |   4 +-
  .../display/daydream/DaydreamFragment.java    |  16 +++
  .../ResolutionSelectionFragment.java          |  13 ++
- 15 files changed, 251 insertions(+), 17 deletions(-)
+ 16 files changed, 266 insertions(+), 19 deletions(-)
  create mode 100644 Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
 
+diff --git a/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java b/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
+index 0c0be9573..b36bbd0f7 100644
+--- a/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
++++ b/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
+@@ -76,13 +76,13 @@ public class AccessoriesFragment extends SettingsPreferenceFragment {
+ 
+         LocalBluetoothAdapter btAdapter = mLocalBtManager.getBluetoothAdapter();
+         if (btAdapter == null) {
+-            preferenceScreen.removeAll();
++            keepAddAccessory(preferenceScreen);
+             return;
+         }
+ 
+         final Set<BluetoothDevice> bondedDevices = btAdapter.getBondedDevices();
+         if (bondedDevices == null) {
+-            preferenceScreen.removeAll();
++            keepAddAccessory(preferenceScreen);
+             return;
+         }
+ 
+@@ -142,6 +142,19 @@ public class AccessoriesFragment extends SettingsPreferenceFragment {
+         }
+     }
+ 
++    /**
++     * Keep the "Add accessory" entry visible while Bluetooth is off or the adapter is
++     * unavailable, so the user can open the pairing screen and let it turn Bluetooth on.
++     */
++    private void keepAddAccessory(PreferenceScreen preferenceScreen) {
++        for (int i = preferenceScreen.getPreferenceCount() - 1; i >= 0; i--) {
++            final Preference preference = preferenceScreen.getPreference(i);
++            if (!KEY_ADD_ACCESSORY.equals(preference.getKey())) {
++                preferenceScreen.removePreference(preference);
++            }
++        }
++    }
++
+     @Override
+     public void onStart() {
+         super.onStart();
 diff --git a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java b/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java
 index 5814c6b1f..7e3df98c4 100644
 --- a/Settings/src/com/android/tv/settings/connectivity/EditIpSettingsActivity.java

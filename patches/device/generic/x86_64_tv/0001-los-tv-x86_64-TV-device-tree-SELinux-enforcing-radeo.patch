@@ -1,4 +1,4 @@
-From 8f1ba88d89b0cfa0bae67f41a5be0ec3d1d23112 Mon Sep 17 00:00:00 2001
+From 88943a65584fe886d6312fc58e651e7d74870e8c Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:00 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
@@ -13,7 +13,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  ...roid.hardware.drm-service-lazy.widevine.rc |    12 +
  addon/links.txt                               |    16 +
  addon/los-tv-addon-boot.sh                    |   300 +
- addon/los-tv-addon.sh                         |   696 +
+ addon/los-tv-addon.sh                         |   717 +
  addon/los-tv-gpt.cpp                          |   132 +
  addon/los-tv-msg.cpp                          |   253 +
  ..._android.hardware.drm-service.widevine.xml |    10 +
@@ -36,12 +36,12 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  .../common/{Android.bp.bak => Android.bp}     |     0
  glodroid/device_glodroid.mk                   |     1 -
  ids/{Android.bp.bak => Android.bp}            |     0
- ids/pci.ids                                   | 43430 ++++++++++++++++
+ ids/pci.ids                                   | 43461 ++++++++++++++++
  ids/usb.ids                                   | 25705 +++++++++
  init.fstab.sh                                 |     7 +-
  init.recovery.sh                              |   136 +
  init.recovery.x86.rc                          |    15 +
- init.sh                                       |    85 +-
+ init.sh                                       |    90 +-
  init.x86.rc                                   |    16 +
  keylayout/Generic.kl                          |   496 +
  kmsglog/los-tv-kmsglog                        |   Bin 0 -> 9216 bytes
@@ -54,7 +54,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  media_codecs_radeon_apex.xml                  |   446 +
  media_codecs_radeon_c2_video.xml              |   181 +
  .../base/core/res/res/values/config.xml       |     3 +
- .../SettingsProvider/res/values/defaults.xml  |     4 +
+ .../SettingsProvider/res/values/defaults.xml  |     8 +-
  packages.mk                                   |     2 +-
  permissions/google_features.xml               |    10 +
  prebuilt/Android.bp                           |   233 +
@@ -137,7 +137,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 132 files changed, 75289 insertions(+), 89 deletions(-)
+ 132 files changed, 75349 insertions(+), 90 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -780,10 +780,10 @@ index 0000000..d9c3593
 +finish 0
 diff --git a/addon/los-tv-addon.sh b/addon/los-tv-addon.sh
 new file mode 100644
-index 0000000..44e19bb
+index 0000000..07b7222
 --- /dev/null
 +++ b/addon/los-tv-addon.sh
-@@ -0,0 +1,696 @@
+@@ -0,0 +1,717 @@
 +#!/system/bin/sh
 +#
 +# los-tv: установка проприетарных компонентов (Widevine + NDK translation).
@@ -1221,6 +1221,26 @@ index 0000000..44e19bb
 +    log "Play Store установлен в priv-app"
 +}
 +
++
++install_microg() {
++    src=$1
++    apk=
++    for f in "$src/MicroGGmsCore.apk" "$src"/*MicroG*.apk "$src"/*GmsCore*.apk; do
++        if [ -f "$f" ]; then apk=$f; break; fi
++    done
++    if [ -z "$apk" ]; then
++        log "microG APK не найден — пропускаю"
++        return 0
++    fi
++    log "microG: $(basename "$apk")"
++    mkdir -p "$sys/app/MicroGGmsCore" || die "mkdir microG"
++    cp "$apk" "$sys/app/MicroGGmsCore/MicroGGmsCore.apk" || die "cp microG"
++    chmod 755 "$sys/app/MicroGGmsCore"
++    chmod 644 "$sys/app/MicroGGmsCore/MicroGGmsCore.apk"
++    chcon u:object_r:system_file:s0 "$sys/app/MicroGGmsCore/MicroGGmsCore.apk" 2>/dev/null
++    log "microG установлен"
++}
++
 +install_youtube() {
 +    src=$1
 +    srcapk=
@@ -1438,6 +1458,7 @@ index 0000000..44e19bb
 +    patch_build_prop
 +    fi
 +    install_play_store "${ADDON_SRC:-}"
++    install_microg "${ADDON_SRC:-}"
 +    install_youtube "${ADDON_SRC:-}"
 +
 +    sync
@@ -14281,15 +14302,15 @@ rename from ids/Android.bp.bak
 rename to ids/Android.bp
 diff --git a/ids/pci.ids b/ids/pci.ids
 new file mode 100644
-index 0000000..b285c83
+index 0000000..c3c96be
 --- /dev/null
 +++ b/ids/pci.ids
-@@ -0,0 +1,43430 @@
+@@ -0,0 +1,43461 @@
 +#
 +#	List of PCI IDs
 +#
-+#	Version: 2026.10.31
-+#	Date:    2026-10-31 03:15:02
++#	Version: 2026.11.06
++#	Date:    2026-11-06 03:15:02
 +#
 +#	Maintained by Albert Pool, Martin Mares, and other volunteers from
 +#	the PCI ID Project at https://pci-ids.ucw.cz/.
@@ -28046,6 +28067,7 @@ index 0000000..b285c83
 +	2bb5  GB202GL [RTX PRO 6000 Blackwell Server Edition]
 +	2bb9  GB202GL [RTX 6000D]
 +	2bbc  GB202GL [RTX PRO 6000D Blackwell Max-Q Workstation Edition]
++	2bbd  GB202GL [RTX PRO 5500 Blackwell Workstation Edition]
 +	2c02  GB203 [GeForce RTX 5080]
 +	2c05  GB203 [GeForce RTX 5070 Ti]
 +	2c09  GB203 [GeForce RTX 5070]
@@ -28092,6 +28114,7 @@ index 0000000..b285c83
 +	2f38  GB205GLM [RTX PRO 3000 Blackwell Generation Laptop GPU]
 +	2f58  GB205M [GeForce RTX 5070 Ti Mobile]
 +	2f80  GB205 High Definition Audio Controller
++	2f88  T256
 +	2f95  TB500 RP x16
 +	2f96  TB500 RP x8
 +	2f97  TB500 RP x4
@@ -28101,7 +28124,7 @@ index 0000000..b285c83
 +	3002  GR100
 +	3021  GR100 [PCIe Faber]
 +	3040  GR100 [Reserved Dev ID B]
-+	3041  GR100
++	3041  GR100 [VR NVL72]
 +	307e  GR100
 +	307f  GR100
 +	3080  GR102 [Reserved Dev ID A]
@@ -31757,14 +31780,17 @@ index 0000000..b285c83
 +	6348  PM63048 Switchtec PSX 48xG6 Programmable PCIe Switch
 +	6360  PM63160 Switchtec PSX 160xG6 Programmable PCIe Switch
 +	6364  PM63064 Switchtec PSX 64xG6 Programmable PCIe Switch
++	7020  PM70320 Switchtec PFXs 320xG7 Secure-capable Fanout PCIe Switch
 +	7044  PM70144 Switchtec PFXs 144xG7 Secure-capable Fanout PCIe Switch
 +	7048  PM70048 Switchtec PFXs 48xG7 Secure-capable Fanout PCIe Switch
 +	7060  PM70160 Switchtec PFXs 160xG7 Secure-capable Fanout PCIe Switch
 +	7064  PM70064 Switchtec PFXs 64xG7 Secure-capable Fanout PCIe Switch
++	7120  PM71320 Switchtec PSXs 320xG7 Secure-capable Programmable PCIe Switch
 +	7144  PM71144 Switchtec PSXs 144xG7 Secure-capable Programmable PCIe Switch
 +	7148  PM71048 Switchtec PSXs 48xG7 Secure-capable Programmable PCIe Switch
 +	7160  PM71160 Switchtec PSXs 160xG7 Secure-capable Programmable PCIe Switch
 +	7164  PM71064 Switchtec PSXs 64xG7 Secure-capable Programmable PCIe Switch
++	7220  PM72320 Switchtec PFX 320xG7 Fanout PCIe Switch
 +	7244  PM72144 Switchtec PFX 144xG7 Fanout PCIe Switch
 +	7248  PM72048 Switchtec PFX 48xG7 Fanout PCIe Switch
 +	7260  PM72160 Switchtec PFX 160xG7 Fanout PCIe Switch
@@ -31772,6 +31798,7 @@ index 0000000..b285c83
 +	7364  PM7364 [FREEDM - 32 Frame Engine & Datalink Mgr]
 +	7375  PM7375 [LASAR-155 ATM SAR]
 +	7384  PM7384 [FREEDM - 84P672 Frm Engine & Datalink Mgr]
++	7420  PM74320 Switchtec PSX 320xG7 Programmable PCIe Switch
 +	7444  PM74144 Switchtec PSX 144xG7 Programmable PCIe Switch
 +	7448  PM74048 Switchtec PSX 48xG7 Programmable PCIe Switch
 +	7460  PM74160 Switchtec PSX 160xG7 Programmable PCIe Switch
@@ -34299,6 +34326,7 @@ index 0000000..b285c83
 +# Virtual Video Card Device for Windows Remote Desktop (RDP)
 +	008c  Basic Render Driver
 +	008e  Basic Render Driver
++	00ba  Microsoft Azure Network Adapter
 +	5353  Hyper-V virtual VGA
 +	5801  XMA Decoder (Xenon)
 +	5802  SATA Controller - CdRom (Xenon)
@@ -35504,6 +35532,18 @@ index 0000000..b285c83
 +# NVMe PM1755 MU U.2 6.4TB
 +		1028 23a0  MZWL96T4HFLAAD3
 +	ac02  NVMe SSD Controller PM1763/PM1765
++# Dell NVMe PM1763 RI TCG E3.S 3.84TB
++		1028 249e  MZ3LD3T8HELVAD7
++# Dell NVMe PM1763 RI TCG E3.S 7.6TB
++		1028 249f  MZ3LD7T6HELDAD7
++# Dell NVMe PM1763 RI TCG E3.S 15TB
++		1028 24a0  MZ3LD15THEL1AD7
++# Dell NVMe PM1763 RI TCG E3.S 30TB
++		1028 24a1  MZ3LD30THELFAD7
++# Dell NVMe PM1765 MU TCG E3.S 3.2TB
++		1028 24a2  MZ3LD3T2HELVAD7
++# Dell NVMe PM1765 MU TCG E3.S 6.4TB
++		1028 24a3  MZ3LD6T4HELDAD7
 +	ecec  Exynos 8895 PCIe Root Complex
 +144e  OLITEC
 +144f  Askey Computer Corp.
@@ -40411,9 +40451,11 @@ index 0000000..b285c83
 +		1022 000e  Xilinx VCU128
 +		1022 000f  Xilinx Alveo U55C
 +		1022 0010  Xilinx Varium C1100
++		1022 0014  Xilinx V80
 +		1022 100d  Xilinx KCU1500 Extended
 +		1022 100f  Xilinx Alveo U55C Extended
 +		1022 1010  Xilinx Varium C1100 Extended
++		1022 1014  Xilinx V80 Extended
 +		12ba 0002  XUPVV8 VU13P
 +		12ba 0013  XUPVV8 VU9P
 +		1a4a 0003  PGP Card GEN3
@@ -41173,6 +41215,7 @@ index 0000000..b285c83
 +# based on PCIe 4TG2-P Controller, for 4TS2-P series
 +	523a  PCIe 4TS2-P Controller
 +	523b  PCIe 4IG2-P Controller
++	5638  PCIe 4TS3-P Controller
 +# based on SM8366 Controller
 +	8366  PCIe 5TS-P Controller
 +1bcd  Apacer Technology
@@ -41390,6 +41433,7 @@ index 0000000..b285c83
 +	243b  PE6110 NVMe Solid State Drive
 +		1c5c 0100  PE6110 NVMe Solid State Drive
 +	2527  PE4010 NVMe Solid State Drive
++	2570  PEB210 E1.S
 +	2839  PE8000 Series NVMe Solid State Drive
 +		1028 2143  DC NVMe SED PE8010 RI U.2 960GB
 +		1028 2144  DC NVMe PE8010 RI U.2 960GB
@@ -43778,9 +43822,11 @@ index 0000000..b285c83
 +		1ee4 0415  NVMe SSD U.2 1.92TB (P8118Z3)
 +		1ee4 0416  NVMe SSD U.2 3.84TB (P8118Z3)
 +		1ee4 0417  NVMe SSD U.2 7.68TB (P8118Z3)
++		1ee4 0418  NVMe SSD U.2 15.36TB (P8118Z3)
 +		1ee4 0425  NVMe SSD U.2 1.6TB (P8118Z3)
 +		1ee4 0426  NVMe SSD U.2 3.2TB (P8118Z3)
 +		1ee4 0427  NVMe SSD U.2 6.4TB (P8118Z3)
++		1ee4 0428  NVMe SSD U.2 12.8TB (P8118Z3)
 +		1ee4 0515  NVMe SSD U.2 1.92TB (P8118Z4)
 +		1ee4 0516  NVMe SSD U.2 3.84TB (P8118Z4)
 +		1ee4 0517  NVMe SSD U.2 7.68TB (P8118Z4)
@@ -44799,6 +44845,9 @@ index 0000000..b285c83
 +		2036 0864  NF1618 Family NX864 (1*200GE)
 +		2036 0865  NF1618 Family NX865 (2*200GE)
 +	1619  NF1618 Family Virtual Function
++	7000  Netforward PolarBear Ethernet Switch ASIC
++		2036 7060  Netforward NF7060 Datacenter Ethernet Switch ASIC
++		2036 7061  Netforward NF7061 Datacenter Ethernet Switch ASIC
 +	8000  NP36xxx PCIe Gen 6 Switch
 +		2036 0104  NP36104 PCIe Gen 6 26 port/104 lane Switch Upstream/Downstream Port
 +		2036 0144  NP36144 PCIe Gen 6 36 port/144 lane Switch Upstream/Downstream Port
@@ -45120,6 +45169,8 @@ index 0000000..b285c83
 +	0304  D35 Family [D3]
 +	0305  D35 Family [HC3]
 +2165  Dnotitia Inc.
++# Baovix Technology Co., Ltd vendor ID=2178
++2178  Baovix Technology Co., Ltd
 +21b4  Hunan Goke Microelectronics Co., Ltd
 +21c3  21st Century Computer Corp.
 +22b8  Flex-Logix Technologies
@@ -54899,45 +54950,46 @@ index 0000000..b285c83
 +	9840  Lakefield GT2 [UHD Graphics]
 +	9841  Lakefield GT1.5 [UHD Graphics]
 +	98fa  Lakefield UFS Controller
-+	9a01  11th Gen Core Processor PCIe Controller #1
++	9a01  11th Gen Core Processor PCIe Root Port
 +	9a02  11th Gen Core Processor UP4 2 Cores Host Bridge/DRAM Controller
 +	9a03  11th Gen Core Processor Dynamic Tuning Technology
 +	9a04  11th Gen Core Processor UP3 2 Cores Host Bridge/DRAM Controller
-+	9a05  11th Gen Core Processor PCIe Controller #2
-+	9a07  11th Gen Core Processor PCIe Controller #3
-+	9a09  11th Gen Core Processor PCIe Controller
-+	9a0b  Volume Management Device NVMe RAID Controller
-+	9a0d  Tigerlake Telemetry Aggregator Driver
-+	9a0f  11th Gen Core Processor PCIe Controller #0
-+	9a11  GNA Scoring Accelerator module
-+	9a12  Tiger Lake-UP4 4 cores Host Bridge/DRAM Registers
-+	9a13  Tiger Lake-LP Thunderbolt 4 USB Controller
-+	9a14  Tiger Lake-UP3/H35 4 cores Host Bridge/DRAM Registers
-+	9a15  Tiger Lake xDCI Controller
-+	9a17  Tiger Lake-H Thunderbolt 4 USB Controller
-+	9a19  Tiger Lake IPU6
-+	9a1b  Tiger Lake-LP Thunderbolt 4 NHI #0
-+	9a1d  Tiger Lake-LP Thunderbolt 4 NHI #1
-+	9a1f  Tiger Lake-H Thunderbolt 4 NHI #0
-+	9a21  Tiger Lake-H Thunderbolt 4 NHI #1
-+	9a23  Tiger Lake-LP Thunderbolt 4 PCI Express Root Port #0
-+	9a25  Tiger Lake-LP Thunderbolt 4 PCI Express Root Port #1
-+	9a26  Tiger Lake-H 6 cores Host Bridge/DRAM Registers
-+	9a27  Tiger Lake-LP Thunderbolt 4 PCI Express Root Port #2
-+	9a29  Tiger Lake-LP Thunderbolt 4 PCI Express Root Port #3
-+	9a2b  Tiger Lake-H Thunderbolt 4 PCI Express Root Port #0
-+	9a2d  Tiger Lake-H Thunderbolt 4 PCI Express Root Port #1
-+	9a2f  Tiger Lake-H Thunderbolt 4 PCI Express Root Port #2
-+	9a31  Tiger Lake-H Thunderbolt 4 PCI Express Root Port #3
-+	9a33  Tiger Lake Trace Hub
-+	9a36  Tiger Lake-H 8 cores Host Bridge/DRAM Registers
-+	9a39  Tiger Lake H IPU6-Slim
-+	9a40  Tiger Lake-UP4 GT2 [Iris Xe Graphics]
-+	9a49  TigerLake-LP GT2 [Iris Xe Graphics]
-+	9a60  TigerLake-H GT1 [UHD Graphics]
-+	9a68  TigerLake-H GT1 [UHD Graphics]
++	9a05  11th Gen Core Processor PCIe Root Port
++	9a07  11th Gen Core Processor PCIe Root Port
++	9a09  11th Gen Core Processor Host-PCIe Bridge
++	9a0b  11th Gen Core Processor Volume Management Device
++	9a0d  11th Gen Core Processor Crash Log and Telemetry
++	9a0f  11th Gen Core Processor PCIe Root Port
++	9a11  11th Gen Core Processor Gauss Newton Algorithm Device
++	9a12  11th Gen Core Processor UP4 4 Cores Host Bridge/DRAM Controller
++	9a13  11th Gen Core Processor USB-C xHCI
++	9a14  11th Gen Core Processor UP3/H35 4 Cores Host Bridge/DRAM Controller
++	9a15  11th Gen Core Processor USB-C xDCI
++	9a17  11th Gen Core Processor USB-C xHCI
++	9a19  11th Gen Core Processor Image Processing Unit
++	9a1a  11th Gen Core Processor UP3/H35-Refresh 4 Cores Host Bridge/DRAM Controller
++	9a1b  11th Gen Core Processor Thunderbolt DMA #0
++	9a1d  11th Gen Core Processor Thunderbolt DMA #1
++	9a1f  11th Gen Core Processor Thunderbolt DMA #0
++	9a21  11th Gen Core Processor Thunderbolt DMA #1
++	9a23  11th Gen Core Processor Thunderbolt PCIe Controller #0
++	9a25  11th Gen Core Processor Thunderbolt PCIe Controller #1
++	9a26  11th Gen Core Processor H 6 Cores Host Bridge/DRAM Controller
++	9a27  11th Gen Core Processor Thunderbolt PCIe Controller #2
++	9a29  11th Gen Core Processor Thunderbolt PCIe Controller #3
++	9a2b  11th Gen Core Processor USB-C PCIe Root Port #0
++	9a2d  11th Gen Core Processor USB-C PCIe Root Port #1
++	9a2f  11th Gen Core Processor USB-C PCIe Root Port #2
++	9a31  11th Gen Core Processor USB-C PCIe Root Port #3
++	9a33  11th Gen Core Processor Trace Hub
++	9a36  11th Gen Core Processor H 8 Cores Host Bridge/DRAM Controller
++	9a39  11th Gen Core Processor Image Processing Unit
++	9a40  11th Gen Core Processor UP4 GT2 [Iris Xe Graphics]
++	9a49  11th Gen Core Processor GT2 [Iris Xe Graphics]
++	9a60  11th Gen Core Processor H GT1 [UHD Graphics]
++	9a68  11th Gen Core Processor H GT1 [UHD Graphics]
 +	9a70  Tiger Lake-H GT1 [UHD Graphics]
-+	9a78  Tiger Lake-LP GT2 [UHD Graphics G4]
++	9a78  11th Gen Core Processor UP3/UP4 GT2
 +	9b21  Comet Lake-U GT2 [UHD Graphics 620]
 +	9b33  Comet Lake-S 6c Host Bridge/DRAM Controller
 +	9b41  CometLake-U GT2 [UHD Graphics]
@@ -83651,7 +83703,7 @@ index d150e2f..8f7f988 100644
      ifup ${vendor.recovery.ethernet.dhcp.iface:-eth0}
      start dhcpclient
 diff --git a/init.sh b/init.sh
-index 85013d1..4db29a1 100644
+index 85013d1..f02b10e 100644
 --- a/init.sh
 +++ b/init.sh
 @@ -418,6 +418,7 @@ function init_hal_gralloc()
@@ -83747,10 +83799,10 @@ index 85013d1..4db29a1 100644
 +		[ -e "$f" ] && mount --bind /vendor/etc/media_codecs_radeon_apex.xml "$f"
 +	done
 +
-+	# the codec services cache the lists at start-up
++	# Codec services cache the lists at start-up.  The apexcodecs entry
++	# point starts media.swcodec after this function returns, on every GPU.
 +	stop media.swcodec
 +	stop android-hardware-media-c2-hal
-+	start media.swcodec
 +	start android-hardware-media-c2-hal
  }
  
@@ -83763,20 +83815,22 @@ index 85013d1..4db29a1 100644
  	init_tscal
  	init_ril
  	init_prepare_ota
-@@ -937,7 +989,11 @@ function do_netconsole()
+@@ -937,7 +989,13 @@ function do_netconsole()
  
  function do_bootcomplete()
  {
 -	hciconfig | grep -q hci || pm disable com.android.bluetooth
-+	# 2026-11-01: отключать com.android.bluetooth НЕЛЬЗЯ. Если hci0 нет,
++	# 2026-11-01: отключать com.android.bluetooth НЕЛЬЗЯ. Если HCI-адаптера нет,
 +	# пакет отключался, и на следующей загрузке system_server падал на
 +	# BluetoothService ("No service can handle intent") → бут-анимация
 +	# навсегда. Просто фиксируем факт в kmsg.
-+	hciconfig | grep -q hci || echo "init.sh: no HCI adapter (Bluetooth hardware missing)" > /dev/kmsg
++	# 2026-11-05: hciconfig в toybox отсутствует, поэтому проверяем sysfs.
++	ls /sys/class/bluetooth/hci* >/dev/null 2>&1 || \
++		echo "init.sh: no HCI adapter (Bluetooth hardware missing)" > /dev/kmsg
  
  	init_cpu_governor
  
-@@ -950,7 +1006,8 @@ function do_bootcomplete()
+@@ -950,7 +1008,8 @@ function do_bootcomplete()
  			echo on > /sys/devices/pci0000:00/0000:00:15.1/i2c_designware.1/power/control
  			;;
  		VMware*)
@@ -83786,7 +83840,7 @@ index 85013d1..4db29a1 100644
  			;;
  		X80*Power)
  			export POWER_NONBOOT_CPU_OFF=${POWER_NONBOOT_CPU_OFF:-1}
-@@ -966,6 +1023,15 @@ function do_bootcomplete()
+@@ -966,6 +1025,15 @@ function do_bootcomplete()
  	# initialize audio in bootcomplete
  	init_hal_audio_bootcomplete
  
@@ -83802,12 +83856,15 @@ index 85013d1..4db29a1 100644
  	# Turn off TSCalibration if property isn't set
  	if [ "$(getprop ro.tscal.enable)" == "true" ]; then
  		pm enable org.zeroxlab.util.tscal
-@@ -1115,6 +1181,9 @@ case "$1" in
+@@ -1115,6 +1183,12 @@ case "$1" in
  	kmsg)
  		dmesg -w > /data/kmsg.txt
  		;;
 +	apexcodecs)
 +		do_media_codec_lists
++		# APEX services may be registered after class_start main.  Make sure
++		# media.swcodec runs on every GPU, not only after the Radeon fixup.
++		start media.swcodec
 +		;;
  	init|"")
  		do_init
@@ -85690,10 +85747,20 @@ index 222b011..2cc33bd 100644
 +    <bool name="config_dreamsActivatedOnSleepByDefault">true</bool>
  </resources>
 diff --git a/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml b/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
-index 1e7c19d..32a9966 100644
+index 1e7c19d..e14caa8 100644
 --- a/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
 +++ b/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
-@@ -24,4 +24,8 @@
+@@ -17,11 +17,17 @@
+  */
+ -->
+ <resources>
+-    <bool name="def_bluetooth_on">false</bool>
++    <!-- los-tv: Bluetooth must be on by default so Android TV settings expose
++         "Add accessory" and a Bluetooth remote can be paired on first boot. -->
++    <bool name="def_bluetooth_on">true</bool>
+     <bool name="def_lockscreen_disabled">false</bool>
+     <integer name="def_screen_off_timeout">600000000</integer>
+     <integer name="def_sleep_timeout">86400000</integer>    
      <bool name="def_accelerometer_rotation">true</bool>
      <!-- default setting for Settings.System.POWERMENU_ADVANCED -->
      <bool name="def_powermenu_advanced">false</bool>

@@ -6,6 +6,32 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-04 … 07 — media.swcodec на любом GPU, Bluetooth, microG; Intel H81M под Enforcing
+
+- `init.sh`: `media.swcodec` теперь стартует в общей точке входа
+  `apexcodecs` (триггер `apex.all.ready=true`) для любого GPU, а не только
+  внутри radeon-ветки `do_media_codec_lists()`. Без этого на Intel H81M
+  не регистрировался AIDL `IComponentStore/software`, `mediaserver` ждал
+  его на binder, и YouTube TV зависал чёрным экраном при холодном
+  запуске. Проверено на железе после пересборки ISO и перезагрузки:
+  `init.svc.media.swcodec=running`, `IComponentStore/software` и
+  `/ffmpeg` в servicemanager, холодный старт YouTube TV ~9–12 с.
+- `init.sh`: проверка наличия Bluetooth-адаптера в `do_bootcomplete()`
+  переведена с `hciconfig` (отсутствует в toybox) на sysfs
+  (`/sys/class/bluetooth/hci*`).
+- Bluetooth по умолчанию включён (`def_bluetooth_on=true`), а в
+  TvSettings пункт «Добавить аксессуар» остаётся видимым, когда адаптер
+  выключен/недоступен (`AccessoriesFragment`) — пульт можно спарить
+  при первой загрузке.
+- `hardware/interfaces`: `BluetoothHci` — `return` после
+  `UNABLE_TO_OPEN_INTERFACE`; без контроллера HAL падал в цикле на
+  `FD_SET(-1)`. Проект добавлен в `patches/`.
+- Add-on: установка microG (`install_microg`, APK кладёт пользователь,
+  в git не публикуется).
+- `ids/pci.ids` обновлён до upstream 2026.11.06.
+- Intel H81M (`.198`) переведён на SELinux Enforcing (проверено
+  2026-11-05 … 07); производительный/откатный слот сохранялся отдельно.
+
 ## 2026-11-05 — SELinux Enforcing и медиа (e3000n)
 
 - SELinux переведён в **Enforcing** на e3000n (AMD Kabini): загрузка, сеть,

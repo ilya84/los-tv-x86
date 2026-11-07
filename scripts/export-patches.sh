@@ -26,6 +26,7 @@ external/mesa3d
 device/generic/x86_64_tv
 system/sepolicy
 device/google/atv
+hardware/interfaces
 "
 
 rm -rf "$HERE/patches"
