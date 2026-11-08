@@ -1,0 +1,28 @@
+From 9adcf42607cfeb1835234217c488a2bc66f9da53 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sun, 8 Nov 2026 18:14:06 +1000
+Subject: [PATCH] los-tv: disable volume_group_management_update for
+ trunk_staging
+
+The x86 TV audio policy config has no volume groups, so the new volume
+group management fails initStreamVolume (group id -1), stream volumes
+stay NaN and REMOTE_SUBMIX capture becomes silent. Revert to legacy
+volume init for this port.
+
+Change-Id: I8c981c42a86e59f0895fe926792c057a9fd6f66f
+---
+ .../volume_group_management_update_flag_values.textproto        | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/aconfig/trunk_staging/android.media.audiopolicy/volume_group_management_update_flag_values.textproto b/aconfig/trunk_staging/android.media.audiopolicy/volume_group_management_update_flag_values.textproto
+index 0cff5d3bf..e965fe9f0 100644
+--- a/aconfig/trunk_staging/android.media.audiopolicy/volume_group_management_update_flag_values.textproto
++++ b/aconfig/trunk_staging/android.media.audiopolicy/volume_group_management_update_flag_values.textproto
+@@ -1,6 +1,6 @@
+ flag_value {
+   package: "android.media.audiopolicy"
+   name: "volume_group_management_update"
+-  state: ENABLED
++  state: DISABLED
+   permission: READ_WRITE
+ }

@@ -12,6 +12,7 @@ PROJECTS="
 bootable/aaropa
 bootable/recovery
 build/soong
+build/release
 system/core
 frameworks/base
 packages/apps/TvSettings

@@ -1,6 +1,7 @@
 bootable/aaropa	patches/bootable/aaropa/0001-los-tv-initrd-on-Bliss-Bass-8c6a69f-BCB-recovery-mod.patch
 bootable/recovery	patches/bootable/recovery/0001-los-tv-recovery-sideload-auto-reboot-on-success-for-.patch
 build/soong	patches/build/soong/0001-los-tv-fsgen-map-tv-recovery-density-to-xhdpi.patch
+build/release	patches/build/release/0001-los-tv-disable-volume_group_management_update-for-tr.patch
 system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch
 frameworks/base	patches/frameworks/base/0001-los-tv-TV-framework-notification-extender-Home-key-r.patch
 packages/apps/TvSettings	patches/packages/apps/TvSettings/0001-los-tv-TV-settings-BLE-remotes-x86-display-resolutio.patch
