@@ -6,6 +6,23 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-09 — тишина в scrcpy/REMOTE_SUBMIX (Intel): volume groups
+
+- После апстрима захват звука (scrcpy, screen recording) на Intel отдавал
+  тишину: `STRATEGY_MEDIA` уходил в `REMOTE_SUBMIX`, потоки писали/читали,
+  но у потока MUSIC была `Volume: nan` (на e3000n — −21.6 dB), в logcat —
+  `setMinVolumeIndexForGroup: Invalid group id -1` каждые 2 с.
+- Причина: рабочий `/metadata` включил trunk_staging-флаг
+  `android.media.audiopolicy.volume_group_management_update`; в
+  аудио-конфиге x86-порта нет volume groups → `initStreamVolume` падал,
+  громкость оставалась NaN → в субмикс писались нули.
+- Фикс: флаг `volume_group_management_update` отключён в
+  `build/release` для `trunk_staging` (проект добавлен в `patches/`);
+  заглушка `/metadata` теперь ставится в корень образа (`root/...`), как
+  и ожидает initrd. Проверено на Intel: scrcpy принимает звук.
+- План на потом: новый initrd Bliss-Bass (в нём нет rtl_nic firmware и
+  части модулей — recovery без сети) и аудит trunk_staging-флагов.
+
 ## 2026-11-08 — фиксы после апстрима: /metadata, GRUB recovery
 
 - Новый порт `bootable/aaropa` на Bliss-Bass `8c6a69f`: initrd (BCB-recovery,
