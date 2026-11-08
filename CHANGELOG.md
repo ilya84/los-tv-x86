@@ -6,6 +6,18 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-09 — KernelSU удалён, /metadata постоянный, recovery сам сбрасывает MODE
+
+- Ядро (`kernel/x86/zenith`): `CONFIG_KSU` выключен — KernelSU больше не
+  инициализируется и не спамит при загрузке; остаётся консольный AOSP su.
+- Initrd: `/metadata` теперь bind-mount каталога `metadata` на
+  cdrom-разделе (создаётся при первой загрузке; fallback — tmpfs):
+  aconfig-оверрайды и APEX-rollback переживают перезагрузку.
+- Recovery: при старте сбрасывает `MODE=normal` — обычный reboot из
+  recovery возвращает в Android без цикла.
+- Проверено на Intel H81M: загрузка, Enforcing, звук (scrcpy), recovery
+  с сетью (eth0 + adb), сохранность `/metadata` после ребута.
+
 ## 2026-11-09 — тишина в scrcpy/REMOTE_SUBMIX (Intel): volume groups
 
 - После апстрима захват звука (scrcpy, screen recording) на Intel отдавал
