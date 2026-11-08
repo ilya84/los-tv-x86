@@ -1,20 +1,20 @@
-From 1a09066128246f109926bb1df2e446c5455e04f5 Mon Sep 17 00:00:00 2001
+From 7eaa68a12b64d7916a5dfee433484f861fc765ae Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Sun, 8 Nov 2026 19:25:38 +1000
+Date: Sun, 8 Nov 2026 19:32:33 +1000
 Subject: [PATCH] los-tv: initrd on Bliss-Bass 8c6a69f: BCB recovery, mode
  markers, /metadata, MODE reset, NIC firmware
 
 Port of the los-tv initrd patches to Bliss-Bass upstream:
 - recovery by BCB from misc.img; GRUB mode markers cleanup; NIC modules
   for recovery; persistent kmsg log on the ESP (UUID from fstab.android);
-- tmpfs on /metadata for aconfigd and MODE=normal reset after GRUB;
-- restore rtl_nic firmware and NIC kernel modules in the initrd (the
-  20260905 release initrd_lib ships only busybox/ntfs-3g, so recovery had
-  no network);
+- /metadata on the cdrom partition (persistent aconfig overrides and
+  APEX rollback data), fallback to tmpfs; MODE=normal reset after GRUB;
+- rtl_nic firmware and NIC kernel modules restored (the 20260905 release
+  initrd_lib ships only busybox/ntfs-3g, so recovery had no network);
 - Android.mk keeps the 16 MiB initrd padding and drops HFS+/APM from the ISO.
 ---
- Android.mk                                    |  26 ++++++-
- initrd/init                                   |  69 ++++++++++++++++++
+ Android.mk                                    |  26 +++++-
+ initrd/init                                   |  74 ++++++++++++++++++
  initrd/usr/bin/insmod                         | Bin 0 -> 682696 bytes
  initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw | Bin 0 -> 2076 bytes
  .../lib/firmware/rtl_nic/rtl8105e-1.fw.zst    | Bin 0 -> 1002 bytes
@@ -108,7 +108,7 @@ Port of the los-tv initrd patches to Bliss-Bass upstream:
  .../usr/lib/modules/6.18.21-zenith+/r8152.ko  | Bin 0 -> 598416 bytes
  .../usr/lib/modules/6.18.21-zenith+/r8169.ko  | Bin 0 -> 376616 bytes
  .../lib/modules/6.18.21-zenith+/realtek.ko    | Bin 0 -> 76776 bytes
- 95 files changed, 92 insertions(+), 3 deletions(-)
+ 95 files changed, 97 insertions(+), 3 deletions(-)
  create mode 100755 initrd/usr/bin/insmod
  create mode 100644 initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw
  create mode 100644 initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw.zst
@@ -255,7 +255,7 @@ index 597d2dc..462df3e 100644
  		-V "$(DISK_LABEL)"
  	$(hide) $(SHA256) $(ISO_IMAGE) | sed "s|$(PRODUCT_OUT)/||" > $(ISO_IMAGE).sha256sum
 diff --git a/initrd/init b/initrd/init
-index c30d575..531c4af 100755
+index c30d575..fefbbf0 100755
 --- a/initrd/init
 +++ b/initrd/init
 @@ -443,6 +443,37 @@ fi || debug_shell fatal-err
@@ -296,7 +296,7 @@ index c30d575..531c4af 100755
  if [ "$ISO" ]; then
  	mount -o loop "/mnt/$SRC/$ISO" /mnt
  fi
-@@ -531,6 +562,44 @@ else
+@@ -531,6 +562,49 @@ else
  	# Load data bind mounts
  	bass_data_binds
  
@@ -331,12 +331,17 @@ index c30d575..531c4af 100755
 +		fi
 +	fi
 +
-+	# los-tv: aconfigd needs /metadata (no metadata partition on this port);
-+	# without it PackageManager drops feature-flagged permissions and
-+	# system_server aborts in AppOpService (e.g. RANGING). The mount point
-+	# /metadata is shipped in the system image (device tree metadata.keep).
-+	mkdir -p "$MODE_BASE/metadata"
-+	mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs "$MODE_BASE/metadata" 2>/dev/null || true
++	# los-tv: aconfigd needs /metadata (no metadata partition on this port).
++	# Keep it on the cdrom partition (like /data) so aconfig flag overrides
++	# and APEX rollback data survive reboots. Created on first boot; fall
++	# back to tmpfs if the partition is not writable.
++	if [ -d "/mnt/$SRC" ]; then
++		mkdir -p "/mnt/$SRC/metadata" 2>/dev/null
++		mount --bind "/mnt/$SRC/metadata" "$MODE_BASE/metadata" 2>/dev/null || {
++			mkdir -p "$MODE_BASE/metadata"
++			mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs "$MODE_BASE/metadata" 2>/dev/null || true
++		}
++	fi
 +
  	# shellcheck disable=SC2093
  	exec ${SWITCH:-switch_root} $MODE_BASE /init
