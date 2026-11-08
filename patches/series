@@ -1,4 +1,4 @@
-bootable/aaropa	patches/bootable/aaropa/0001-los-tv-initrd-BCB-recovery-mode-markers-cleanup-inst.patch
+bootable/aaropa	patches/bootable/aaropa/0001-los-tv-initrd-on-Bliss-Bass-8c6a69f-BCB-recovery-mod.patch
 bootable/recovery	patches/bootable/recovery/0001-los-tv-recovery-sideload-auto-reboot-on-success-for-.patch
 build/soong	patches/build/soong/0001-los-tv-fsgen-map-tv-recovery-density-to-xhdpi.patch
 system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch

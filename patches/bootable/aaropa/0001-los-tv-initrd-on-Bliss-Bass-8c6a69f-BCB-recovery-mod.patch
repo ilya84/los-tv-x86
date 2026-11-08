@@ -1,17 +1,23 @@
-From 466d67a991fd1ab11dd0524fdd751ff3369a652a Mon Sep 17 00:00:00 2001
+From c06d86efe1ba51cb54dd9115780669f280e4362b Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Tue, 3 Nov 2026 13:38:38 +1000
-Subject: [PATCH] los-tv: initrd: BCB recovery, mode markers cleanup, installer
- hooks
+Date: Sun, 8 Nov 2026 16:29:11 +1000
+Subject: [PATCH] los-tv: initrd on Bliss-Bass 8c6a69f: BCB recovery, mode
+ markers, /metadata, MODE reset
 
+Port of the los-tv initrd patches to the Bliss-Bass upstream:
+- recovery by BCB from misc.img (adb reboot recovery);
+- GRUB mode marker cleanup and NIC modules for recovery;
+- persistent kmsg log on the ESP (UUID from fstab.android);
+- tmpfs on /metadata for aconfigd (no metadata partition on this port);
+- MODE=normal reset in android.cfg after GRUB has consumed it.
+Android.mk keeps the 16 MiB initrd padding and drops HFS+/APM from the ISO.
 ---
- Android.mk  | 26 ++++++++++++++++++++++---
- download.sh | 18 ++++++++++++++++++
- initrd/init | 55 +++++++++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 96 insertions(+), 3 deletions(-)
+ Android.mk  | 26 +++++++++++++++++---
+ initrd/init | 69 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 92 insertions(+), 3 deletions(-)
 
 diff --git a/Android.mk b/Android.mk
-index 9077f3f..5a97bab 100644
+index 597d2dc..462df3e 100644
 --- a/Android.mk
 +++ b/Android.mk
 @@ -72,6 +72,16 @@ else
@@ -61,47 +67,11 @@ index 9077f3f..5a97bab 100644
  		--protective-msdos-label -o $@ $^ --sort-weight 0 / --sort-weight 1 /boot \
  		-V "$(DISK_LABEL)"
  	$(hide) $(SHA256) $(ISO_IMAGE) | sed "s|$(PRODUCT_OUT)/||" > $(ISO_IMAGE).sha256sum
-diff --git a/download.sh b/download.sh
-index 3f6e46c..cd3f2da 100755
---- a/download.sh
-+++ b/download.sh
-@@ -117,6 +117,21 @@ extract_initrd_lib() {
-   rm -f initrd_lib.tar.gz
- }
- 
-+# los-tv: download.sh удаляет iso/ целиком, поэтому пропатченный install.sfs
-+# (оверлей Calamares, см. data/2026-10-22-installer-calamares-analysis.txt)
-+# потерялся бы молча. Требуем явного разрешения.
-+check_patched_installer() {
-+  local marker="install.sfs.patched"
-+  if [[ -f "$marker" && "${FORCE_INSTALLER_UPDATE:-0}" != "1" ]]; then
-+    echo "!! В bootable/aaropa/ лежит ПРОПАТЧЕННЫЙ install.sfs (los-tv):" >&2
-+    sed 's/^/   /' "$marker" >&2
-+    echo "!! Скачивание удалит его (remove_existing_files чистит iso/)." >&2
-+    echo "!! Если это осознанно: FORCE_INSTALLER_UPDATE=1 $0" >&2
-+    echo "!! После скачивания заново наложите оверлей: MODE=apply bash ~/patch-install-sfs.sh" >&2
-+    exit 1
-+  fi
-+}
-+
- # Function to display the help message
- show_help() {
-   cat << EOF
-@@ -137,6 +152,9 @@ case "$1" in
-     ;;
-   
-   --initrd-only)
-+    # los-tv: не затирать пропатченный инсталлятор без явного разрешения
-+    check_patched_installer
-+
-     # Check the version first
-     check_version
- 
 diff --git a/initrd/init b/initrd/init
-index 3be914b..eb54631 100755
+index c30d575..531c4af 100755
 --- a/initrd/init
 +++ b/initrd/init
-@@ -352,6 +352,30 @@ fi || debug_shell fatal-err
+@@ -443,6 +443,37 @@ fi || debug_shell fatal-err
  
  remount_rw
  
@@ -121,6 +91,13 @@ index 3be914b..eb54631 100755
 +	rm -f "/mnt/$SRC/boot/grub/mode-sideload" "/mnt/$SRC/boot/grub/mode-recovery" 2>/dev/null
 +fi
 +
++# los-tv: MODE in android.cfg is consumed by this boot (GRUB has already read
++# it).  Reset it so a plain reboot does not fall back into recovery, e.g. when
++# the recovery image predates init.recovery.sh reset_boot_mode.
++if [ -f "/mnt/$SRC/boot/grub/android.cfg" ]; then
++	sed -i "s/^MODE=.*/MODE=normal/" "/mnt/$SRC/boot/grub/android.cfg" 2>/dev/null
++fi
++
 +# los-tv step40: в recovery нужен драйвер NIC (r8169=m в ядре). В recovery-рамдиске
 +# модулей нет, поэтому грузим их из initrd до switch_root; firmware тоже в initrd.
 +if [ "$RCVRY" ]; then
@@ -132,9 +109,9 @@ index 3be914b..eb54631 100755
  if [ "$ISO" ]; then
  	mount -o loop "/mnt/$SRC/$ISO" /mnt
  fi
-@@ -437,6 +461,37 @@ else
- 	# Copy /tmp/log to /android/data/bootlog.txt if DEBUG mode is set
- 	[ -n "$DEBUG" ] && cp /tmp/log /android/data/bootlog.txt
+@@ -531,6 +562,44 @@ else
+ 	# Load data bind mounts
+ 	bass_data_binds
  
 +	# los-tv: persistent kmsg log on the ESP (hardware diagnostics).
 +	# Enabled by default; disable with androidboot.los_tv_kmsglog=0.
@@ -166,6 +143,13 @@ index 3be914b..eb54631 100755
 +			fi
 +		fi
 +	fi
++
++	# los-tv: aconfigd needs /metadata (no metadata partition on this port);
++	# without it PackageManager drops feature-flagged permissions and
++	# system_server aborts in AppOpService (e.g. RANGING). The mount point
++	# /metadata is shipped in the system image (device tree metadata.keep).
++	mkdir -p "$MODE_BASE/metadata"
++	mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs "$MODE_BASE/metadata" 2>/dev/null || true
 +
  	# shellcheck disable=SC2093
  	exec ${SWITCH:-switch_root} $MODE_BASE /init

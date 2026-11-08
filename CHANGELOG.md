@@ -6,6 +6,22 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-08 — фиксы после апстрима: /metadata, GRUB recovery
+
+- Новый порт `bootable/aaropa` на Bliss-Bass `8c6a69f`: initrd (BCB-recovery,
+  маркеры режимов, NIC/kmsg для recovery), паддинг initrd 16 МиБ, ISO без
+  HFS+/APM (патч теперь применяется к Bliss-Bass, не к старому aaropa).
+- `/metadata`: в порте нет metadata-раздела, из-за чего aconfigd не
+  инициализировал flag storage, PackageManager отбрасывал фичефлаговые
+  разрешения (RANGING), и system_server падал в AppOpService. Initrd теперь
+  монтирует tmpfs на `/metadata`, в образ ставится каталог-заглушка.
+- `adb reboot recovery`: `MODE` в `android.cfg` теперь пишет
+  `los-tv-boot-mode.sh` по BCB (раньше это делал только framework
+  ShutdownThread, CLI-ребуты уходили в early-reboot); recovery при старте
+  сбрасывает `MODE=normal`, initrd — тоже (защита от старых recovery).
+- Проверено на Intel H81M: апстрим-система загружается под Enforcing,
+  YouTube TV (NDK/arm64) стартует, Play Store и microG работают.
+
 ## 2026-11-07 — обновление апстрима LineageOS 23.2 / ASB
 
 - Манифест: влиты LineageOS/android (5 коммитов, ASB-форки: conscrypt,

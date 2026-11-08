@@ -1,9 +1,17 @@
-From 88943a65584fe886d6312fc58e651e7d74870e8c Mon Sep 17 00:00:00 2001
+From a0ad8a7b83aa016633b4254d43b80759c54dea92 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Tue, 3 Nov 2026 13:38:00 +1000
+Date: Sun, 8 Nov 2026 16:29:11 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  codecs, keylayout, GRUB recovery, addon)
 
+Includes the 2026-11-08 fixes:
+- /system/metadata mount point (metadata.keep) so the initrd can mount
+  tmpfs there; aconfigd needs /metadata or feature-flagged permissions are
+  dropped and system_server aborts in AppOpService (RANGING).
+- los-tv-boot-mode.sh writes MODE to android.cfg from the BCB, so CLI
+  reboots (adb reboot recovery) enter recovery instead of rebooting early.
+- init.recovery.sh resets MODE=normal when recovery boots, preventing a
+  recovery loop on the next reboot.
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -30,7 +38,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
  bootctrl/{Android.bp.bak => Android.bp}       |     0
- device.mk                                     |   156 +-
+ device.mk                                     |   157 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
  .../client/{Android.bp.bak => Android.bp}     |     0
  .../common/{Android.bp.bak => Android.bp}     |     0
@@ -39,7 +47,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  ids/pci.ids                                   | 43461 ++++++++++++++++
  ids/usb.ids                                   | 25705 +++++++++
  init.fstab.sh                                 |     7 +-
- init.recovery.sh                              |   136 +
+ init.recovery.sh                              |   153 +
  init.recovery.x86.rc                          |    15 +
  init.sh                                       |    90 +-
  init.x86.rc                                   |    16 +
@@ -53,6 +61,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  media_codecs_radeon.xml                       |   455 +
  media_codecs_radeon_apex.xml                  |   446 +
  media_codecs_radeon_c2_video.xml              |   181 +
+ metadata.keep                                 |     3 +
  .../base/core/res/res/values/config.xml       |     3 +
  .../SettingsProvider/res/values/defaults.xml  |     8 +-
  packages.mk                                   |     2 +-
@@ -119,7 +128,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  .../root/system/lib/modules/rndis_host.ko     |   Bin 0 -> 28896 bytes
  scripts/{Android.bp.bak => Android.bp}        |     7 +
  scripts/boot-mode-selection.sh                |    11 +-
- scripts/los-tv-boot-mode.sh                   |    48 +
+ scripts/los-tv-boot-mode.sh                   |    59 +
  seccomp/mediaswcodec.policy                   |     1 +
  .../thermal-daemon/hal_thermal_intel.te       |     3 +
  sepolicy/plat_private/file_contexts           |    35 +-
@@ -137,7 +146,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 132 files changed, 75349 insertions(+), 90 deletions(-)
+ 133 files changed, 75381 insertions(+), 90 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -175,6 +184,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  create mode 100644 media_codecs_radeon.xml
  create mode 100644 media_codecs_radeon_apex.xml
  create mode 100644 media_codecs_radeon_c2_video.xml
+ create mode 100644 metadata.keep
  create mode 100644 permissions/google_features.xml
  create mode 100644 prebuilt/Android.bp
  create mode 100644 prebuilt/README.md
@@ -14047,7 +14057,7 @@ similarity index 100%
 rename from bootctrl/Android.bp.bak
 rename to bootctrl/Android.bp
 diff --git a/device.mk b/device.mk
-index 682a708..f70c74d 100644
+index 682a708..eee2113 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14081,11 +14091,12 @@ index 682a708..f70c74d 100644
  # Update engine
  PRODUCT_PACKAGES += \
      update_engine \
-@@ -85,12 +75,15 @@ PRODUCT_COPY_FILES += \
+@@ -85,12 +75,16 @@ PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/ppp/ip-up:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-up \
      $(LOCAL_PATH)/ppp/ip-down:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-down \
      $(LOCAL_PATH)/ppp/peers/gprs:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/peers/gprs \
 -    $(LOCAL_PATH)/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
++    $(LOCAL_PATH)/metadata.keep:$(TARGET_COPY_OUT_SYSTEM)/metadata/.keep \
 +    frameworks/av/media/libstagefright/data/media_codecs_sw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
      $(LOCAL_PATH)/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
      $(LOCAL_PATH)/fstab.internal.x86:$(TARGET_COPY_OUT_SYSTEM)/vendor/etc/fstab.internal.x86 \
@@ -14098,7 +14109,7 @@ index 682a708..f70c74d 100644
      external/mesa3d/src/util/00-mesa-defaults.conf:$(TARGET_COPY_OUT_VENDOR)/etc/drirc
  
  # Copy Vendor Files
-@@ -100,7 +93,6 @@ PRODUCT_COPY_FILES += \
+@@ -100,7 +94,6 @@ PRODUCT_COPY_FILES += \
      frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
      frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
      frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
@@ -14106,7 +14117,7 @@ index 682a708..f70c74d 100644
      frameworks/native/data/etc/android.hardware.gamepad.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.gamepad.xml \
      frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
      frameworks/native/data/etc/android.hardware.location.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.xml \
-@@ -112,8 +104,6 @@ PRODUCT_COPY_FILES += \
+@@ -112,8 +105,6 @@ PRODUCT_COPY_FILES += \
      frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
      frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
      frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
@@ -14115,7 +14126,7 @@ index 682a708..f70c74d 100644
      frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
      frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
      frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
-@@ -152,6 +142,15 @@ endif
+@@ -152,6 +143,15 @@ endif
  PRODUCT_COPY_FILES += \
      $(if $(wildcard $(PRODUCT_DIR)init.recovery.$(TARGET_PRODUCT).rc),$(PRODUCT_DIR)init.recovery.$(TARGET_PRODUCT).rc,$(LOCAL_PATH)/init.recovery.x86.rc):$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.$(TARGET_PRODUCT).rc \
      $(if $(wildcard $(PRODUCT_DIR)init.recovery.sh),$(PRODUCT_DIR),$(LOCAL_PATH)/)init.recovery.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init.recovery.sh \
@@ -14131,7 +14142,7 @@ index 682a708..f70c74d 100644
      $(if $(wildcard $(PRODUCT_DIR)init.fstab.sh),$(PRODUCT_DIR),$(LOCAL_PATH)/)init.fstab.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init.fstab.sh \
  
  PRODUCT_TAGS += dalvik.gc.type-precise
-@@ -212,7 +211,6 @@ $(call inherit-product-if-exists,hardware/libsensors/sensors.mk)
+@@ -212,7 +212,6 @@ $(call inherit-product-if-exists,hardware/libsensors/sensors.mk)
  $(call inherit-product-if-exists,$(LOCAL_PATH)/glodroid/device_glodroid.mk)
  
  ifeq ($(USE_LIBNDK_TRANSLATION_NB),true)
@@ -14139,7 +14150,7 @@ index 682a708..f70c74d 100644
  $(call inherit-product-if-exists, vendor/google/emu-x86/target/native_bridge_arm_on_x86.mk)
  NDK_TRANSLATION_PREINSTALL := google
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
-@@ -225,8 +223,6 @@ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
+@@ -225,8 +224,6 @@ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
  ifeq ($(ANDROID_USE_NDK_TRANSLATION),true)
@@ -14148,7 +14159,7 @@ index 682a708..f70c74d 100644
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
-@@ -285,10 +281,120 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+@@ -285,10 +282,120 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
  
  $(call inherit-product-if-exists, hardware/x86power/x86power.mk)
  
@@ -83504,7 +83515,7 @@ index 1813867..fee06ae 100644
  }
  
 diff --git a/init.recovery.sh b/init.recovery.sh
-index dc7aabc..d5108c0 100644
+index dc7aabc..a02a56e 100644
 --- a/init.recovery.sh
 +++ b/init.recovery.sh
 @@ -91,6 +91,10 @@ function init_misc()
@@ -83642,10 +83653,33 @@ index dc7aabc..d5108c0 100644
  		*=*)
  			eval $c
  			;;
-@@ -150,6 +259,33 @@ case "$1" in
+@@ -144,12 +253,56 @@ if [ -n "$DEBUG" ]; then
+ 	set -x
+ fi
+ 
++
++# los-tv: the requested boot mode is consumed by this recovery boot; reset it
++# so a plain reboot does not fall back into recovery (MODE is also set for
++# CLI reboots by los-tv-boot-mode.sh on shutdown).
++function reset_boot_mode()
++{
++	local cfg
++	mkdir -p /mnt/cdrom
++	mount -t ext4 /dev/block/by-name/cdrom /mnt/cdrom 2>/dev/null
++	for cfg in /mnt/cdrom/boot/grub/android.cfg /boot/grub/android.cfg; do
++		[ -f "$cfg" ] || continue
++		sed -i "s/^MODE=.*/MODE=normal/" "$cfg" 2>/dev/null
++	done
++	sync
++}
++
+ case "$1" in
+ 	netconsole)
+ 		[ -n "$DEBUG" ] && do_netconsole
  		;;
  	init|"")
  		do_init
++		reset_boot_mode
 +		# los-tv: драйвер запускается по флагу GRUB или по запросу из
 +		# приложения-плитки в Android (.install-request на data-разделе).
 +		LOSTV_ADDON_RUN=0
@@ -85734,6 +85768,15 @@ index 0000000..194b26e
 +        </MediaCodec>
 +    </Encoders>
 +</Included>
+diff --git a/metadata.keep b/metadata.keep
+new file mode 100644
+index 0000000..458f1ec
+--- /dev/null
++++ b/metadata.keep
+@@ -0,0 +1,3 @@
++# los-tv: placeholder so that /system/metadata exists in the image.
++# The initrd mounts a tmpfs over it; aconfigd needs /metadata (no
++# metadata partition on this x86 port).
 diff --git a/overlay/frameworks/base/core/res/res/values/config.xml b/overlay/frameworks/base/core/res/res/values/config.xml
 index 222b011..2cc33bd 100644
 --- a/overlay/frameworks/base/core/res/res/values/config.xml
@@ -89192,10 +89235,10 @@ index 2a7eccd..82daf65 100644
  found_android=0
 diff --git a/scripts/los-tv-boot-mode.sh b/scripts/los-tv-boot-mode.sh
 new file mode 100644
-index 0000000..eceb5ad
+index 0000000..b982736
 --- /dev/null
 +++ b/scripts/los-tv-boot-mode.sh
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,59 @@
 +#!/vendor/bin/sh
 +#
 +# los-tv: маркер запрошенного режима загрузки для меню GRUB (2026-11-01).
@@ -89241,6 +89284,17 @@ index 0000000..eceb5ad
 +    sideload) touch "$SIDE_MARK" ;;
 +    recovery) touch "$REC_MARK" ;;
 +esac
++
++# los-tv: MODE in android.cfg is normally written by boot-mode-selection.sh,
++# but that service is triggered by sys.shutdown.requested, which only the
++# framework ShutdownThread sets.  CLI paths (adb reboot recovery) bypass it,
++# so the GRUB recovery fix (RECOVERY_EXTRA) would not apply.  We already know
++# the mode from the BCB, so update android.cfg here as well.
++CFG="$GRUBDIR/android.cfg"
++if [ -f "$CFG" ] && [ -w "$CFG" ]; then
++    sed -i "s/^MODE=.*/MODE=$mode/" "$CFG" 2>/dev/null && \
++        klog "android.cfg MODE=$mode"
++fi
 +
 +klog "mode=$mode (grub dir $GRUBDIR)"
 +sync
