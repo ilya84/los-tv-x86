@@ -1,13 +1,14 @@
-From a0ad8a7b83aa016633b4254d43b80759c54dea92 Mon Sep 17 00:00:00 2001
+From e43e650e7023e1f3f81c2a7ec8d4460aae4671a0 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Sun, 8 Nov 2026 16:29:11 +1000
+Date: Sun, 8 Nov 2026 19:08:58 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
  codecs, keylayout, GRUB recovery, addon)
 
-Includes the 2026-11-08 fixes:
-- /system/metadata mount point (metadata.keep) so the initrd can mount
-  tmpfs there; aconfigd needs /metadata or feature-flagged permissions are
-  dropped and system_server aborts in AppOpService (RANGING).
+Includes the 2026-11-08/09 fixes:
+- /system/metadata placeholder installed via root/... so the initrd can
+  mount tmpfs at /metadata (image root); aconfigd needs it or
+  feature-flagged permissions are dropped and system_server aborts in
+  AppOpService (RANGING). The /metadata mount itself lives in the initrd.
 - los-tv-boot-mode.sh writes MODE to android.cfg from the BCB, so CLI
   reboots (adb reboot recovery) enter recovery instead of rebooting early.
 - init.recovery.sh resets MODE=normal when recovery boots, preventing a
@@ -14057,7 +14058,7 @@ similarity index 100%
 rename from bootctrl/Android.bp.bak
 rename to bootctrl/Android.bp
 diff --git a/device.mk b/device.mk
-index 682a708..eee2113 100644
+index 682a708..ff903db 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14096,7 +14097,7 @@ index 682a708..eee2113 100644
      $(LOCAL_PATH)/ppp/ip-down:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-down \
      $(LOCAL_PATH)/ppp/peers/gprs:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/peers/gprs \
 -    $(LOCAL_PATH)/media_codecs.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
-+    $(LOCAL_PATH)/metadata.keep:$(TARGET_COPY_OUT_SYSTEM)/metadata/.keep \
++    $(LOCAL_PATH)/metadata.keep:root/metadata/.keep \
 +    frameworks/av/media/libstagefright/data/media_codecs_sw.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs.xml \
      $(LOCAL_PATH)/media_profiles.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml \
      $(LOCAL_PATH)/fstab.internal.x86:$(TARGET_COPY_OUT_SYSTEM)/vendor/etc/fstab.internal.x86 \
