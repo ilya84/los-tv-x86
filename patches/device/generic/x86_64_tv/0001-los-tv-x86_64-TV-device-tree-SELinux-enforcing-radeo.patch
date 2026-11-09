@@ -1,4 +1,4 @@
-From e43e650e7023e1f3f81c2a7ec8d4460aae4671a0 Mon Sep 17 00:00:00 2001
+From 9ccb45926575cbadb915a2e1c247b86a2e5ea6e1 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Sun, 8 Nov 2026 19:08:58 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
@@ -13,6 +13,11 @@ Includes the 2026-11-08/09 fixes:
   reboots (adb reboot recovery) enter recovery instead of rebooting early.
 - init.recovery.sh resets MODE=normal when recovery boots, preventing a
   recovery loop on the next reboot.
+
+- bt_hotplug: watchdog restart of Bluetooth when the USB HCI adapter is
+  re-enumerated (e.g. a pet touches the dongle).  Android can keep a stale
+  HOGP "connected" state after the old HCI fd dies; the watcher notices the
+  re-created hciN kobject and toggles Bluetooth so the stack re-binds.
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -39,7 +44,9 @@ Includes the 2026-11-08/09 fixes:
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
  bootctrl/{Android.bp.bak => Android.bp}       |     0
- device.mk                                     |   157 +-
+ bt_hotplug/bt_hotplug.rc                      |     9 +
+ bt_hotplug/bt_hotplug.sh                      |   122 +
+ device.mk                                     |   162 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
  .../client/{Android.bp.bak => Android.bp}     |     0
  .../common/{Android.bp.bak => Android.bp}     |     0
@@ -147,7 +154,7 @@ Includes the 2026-11-08/09 fixes:
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 133 files changed, 75381 insertions(+), 90 deletions(-)
+ 135 files changed, 75517 insertions(+), 90 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -169,6 +176,8 @@ Includes the 2026-11-08/09 fixes:
  create mode 100644 addonapp/src/org/los/tv/addon/DownloadService.java
  create mode 100644 addonapp/src/org/los/tv/addon/MainActivity.java
  rename bootctrl/{Android.bp.bak => Android.bp} (100%)
+ create mode 100644 bt_hotplug/bt_hotplug.rc
+ create mode 100644 bt_hotplug/bt_hotplug.sh
  rename dhcp_recovery/{Android.bp.bak => Android.bp} (100%)
  rename dhcp_recovery/client/{Android.bp.bak => Android.bp} (100%)
  rename dhcp_recovery/common/{Android.bp.bak => Android.bp} (100%)
@@ -14057,8 +14066,151 @@ diff --git a/bootctrl/Android.bp.bak b/bootctrl/Android.bp
 similarity index 100%
 rename from bootctrl/Android.bp.bak
 rename to bootctrl/Android.bp
+diff --git a/bt_hotplug/bt_hotplug.rc b/bt_hotplug/bt_hotplug.rc
+new file mode 100644
+index 0000000..b106820
+--- /dev/null
++++ b/bt_hotplug/bt_hotplug.rc
+@@ -0,0 +1,9 @@
++# los-tv: recover Bluetooth if the USB HCI adapter is re-enumerated.
++# The Bluetooth stack can keep a stale "connected" state when the dongle
++# disappears and returns (e.g. a pet touches it); the watcher toggles
++# Bluetooth so the stack re-binds to the fresh /dev/hciX.
++service bt-hotplug /system/bin/sh /system/bin/bt_hotplug.sh
++    class late_start
++    user root
++    group root system
++    seclabel u:r:su:s0
+diff --git a/bt_hotplug/bt_hotplug.sh b/bt_hotplug/bt_hotplug.sh
+new file mode 100644
+index 0000000..4593594
+--- /dev/null
++++ b/bt_hotplug/bt_hotplug.sh
+@@ -0,0 +1,122 @@
++#!/system/bin/sh
++# los-tv: recover Bluetooth after the USB HCI adapter is re-enumerated.
++#
++# Android's Bluetooth stack can keep a stale HOGP/HID "connected" state when
++# the USB dongle disappears and comes back (e.g. a pet touches it): the old
++# HCI fd is dead, but the stack never re-opens the new /dev/hciX.  Watch the
++# USB Bluetooth interface (class E0/01/01) and toggle Bluetooth when its
++# device number changes, so the stack re-binds to the fresh adapter.
++#
++# Disable at runtime with: setprop persist.sys.bt_hotplug 0
++
++TAG=bt_hotplug
++
++log() {
++    echo "$TAG: $*" > /dev/kmsg 2>/dev/null
++}
++
++# 1 when Bluetooth is enabled in the framework.
++bt_enabled() {
++    /system/bin/timeout 10 /system/bin/dumpsys bluetooth_manager 2>/dev/null \
++        | /system/bin/grep -m1 'enabled:' | /system/bin/grep -q 'true'
++}
++
++# 1 when the user wants Bluetooth on.  Never override a manual "off".
++bt_wanted() {
++    [ "$(/system/bin/timeout 10 /system/bin/settings get global bluetooth_on 2>/dev/null)" != "0" ]
++}
++
++# "hciN:inode:ctime" for every registered HCI device.  The kernel destroys
++# and re-creates the hciN kobject when the USB adapter is re-enumerated, so
++# its inode changes even if the USB device number happens to be reused.
++adapter_state() {
++    _out=
++    for _h in /sys/class/bluetooth/hci*; do
++        [ -e "$_h" ] || continue
++        _st=$(/system/bin/stat -c '%i:%Z' "$_h" 2>/dev/null)
++        [ -n "$_st" ] || continue
++        _out="$_out $(/system/bin/basename "$_h"):$_st"
++    done
++    echo "$_out"
++}
++
++restart_bt() {
++    if ! bt_wanted; then
++        log "adapter changed but Bluetooth is off by user; skipping"
++        return
++    fi
++    log "USB Bluetooth adapter re-enumerated; restarting Bluetooth"
++    /system/bin/timeout 20 /system/bin/cmd bluetooth_manager disable >/dev/null 2>&1
++    _i=0
++    while bt_enabled && [ "$_i" -lt 15 ]; do
++        /system/bin/sleep 1
++        _i=$((_i + 1))
++    done
++    /system/bin/sleep 2
++    if ! bt_wanted; then
++        log "Bluetooth turned off during restart; not enabling"
++        return
++    fi
++    /system/bin/timeout 20 /system/bin/cmd bluetooth_manager enable >/dev/null 2>&1
++    _i=0
++    while ! bt_enabled && [ "$_i" -lt 20 ]; do
++        /system/bin/sleep 1
++        _i=$((_i + 1))
++    done
++    if bt_enabled; then
++        log "Bluetooth restarted"
++    else
++        log "Bluetooth did not come back"
++    fi
++}
++
++# Allow disabling the watcher without rebuilding the image.
++while [ "$(/system/bin/getprop persist.sys.bt_hotplug 2>/dev/null)" = "0" ]; do
++    /system/bin/sleep 30
++done
++
++# Wait for the framework, then let the initial adapter enumeration settle.
++while [ "$(/system/bin/getprop sys.boot_completed 2>/dev/null)" != "1" ]; do
++    /system/bin/sleep 2
++done
++/system/bin/sleep 10
++
++_base=$(adapter_state)
++log "started; baseline:${_base:-<none>}"
++
++while true; do
++    /system/bin/sleep 5
++    [ "$(/system/bin/getprop persist.sys.bt_hotplug 2>/dev/null)" = "0" ] && continue
++    _cur=$(adapter_state)
++    [ "$_cur" = "$_base" ] && continue
++
++    log "adapter state:${_base:-<none>} ->${_cur:-<none>}"
++
++    # Wait until the adapter state has been stable for two samples.  The
++    # state may pass through <none> while USB re-enumerates; that is still
++    # the hot-plug event we want to act on, so do not drop it.
++    _stable=0
++    _i=0
++    while [ "$_stable" -lt 2 ] && [ "$_i" -lt 15 ]; do
++        /system/bin/sleep 2
++        _now=$(adapter_state)
++        if [ "$_now" = "$_cur" ]; then
++            _stable=$((_stable + 1))
++        else
++            _stable=0
++            _cur=$_now
++        fi
++        _i=$((_i + 1))
++    done
++
++    _base=$_cur
++    [ -n "$_base" ] || continue
++
++    restart_bt
++
++    # The toggle itself may briefly remove/return the HCI device; ignore
++    # that churn and start from a fresh baseline.
++    /system/bin/sleep 10
++    _base=$(adapter_state)
++    log "new baseline:${_base:-<none>}"
++done
 diff --git a/device.mk b/device.mk
-index 682a708..ff903db 100644
+index 682a708..97af14d 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14160,7 +14312,7 @@ index 682a708..ff903db 100644
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
-@@ -285,10 +282,120 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+@@ -285,10 +282,125 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
  
  $(call inherit-product-if-exists, hardware/x86power/x86power.mk)
  
@@ -14274,6 +14426,11 @@ index 682a708..ff903db 100644
 +PRODUCT_COPY_FILES += \
 +    $(LOCAL_PATH)/kmsglog/los-tv-kmsglog:$(TARGET_COPY_OUT_SYSTEM)/bin/los-tv-kmsglog \
 +    $(LOCAL_PATH)/kmsglog/los-tv-kmsglog.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/los-tv-kmsglog.rc
++
++# los-tv: перезапуск Bluetooth при переподключении USB HCI-адаптера
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/bt_hotplug/bt_hotplug.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/bt_hotplug.sh \
++    $(LOCAL_PATH)/bt_hotplug/bt_hotplug.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/bt_hotplug.rc
 +
 +# los-tv: EGL под enforcing (init.sh не может запуститься: init+execute_no_trans запрещён)
 +PRODUCT_VENDOR_PROPERTIES += ro.hardware.egl=mesa

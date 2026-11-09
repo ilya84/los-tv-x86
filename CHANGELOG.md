@@ -6,6 +6,20 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-09 — BT hot-plug watchdog
+
+- Новый сервис `bt-hotplug` перезапускает Bluetooth, когда USB HCI-адаптер
+  переподключается (например, кот задел донгл). Android после такого
+  hot-plug может остаться в состоянии «HOGP connected» с мёртвым HCI-fd:
+  пульт перестаёт работать, а стек не пытается переподключиться.
+- Watcher следит за пересозданием `hciN` (inode+ctime), а не за USB
+  devnum — при быстром re-plug номер устройства может не измениться.
+- Если Bluetooth выключен пользователем, сервис не включает его.
+  Отключается на лету: `setprop persist.sys.bt_hotplug 0`.
+- Проверено на `.198`: реальный disconnect/reconnect порта
+  (`usb1-port5/disable`) → ровно один автоматический restart BT, без
+  цикла; при выключенном BT — skip.
+
 ## 2026-11-09 — KernelSU удалён, /metadata постоянный, recovery сам сбрасывает MODE
 
 - Ядро (`kernel/x86/zenith`): `CONFIG_KSU` выключен — KernelSU больше не
