@@ -6,6 +6,21 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-09 — target reboot sideload/GRUB, addon install, bt_hotplug
+
+- recovery: `sideload_auto_reboot_on_success` больше не включает UI-флаг
+  автоперезагрузки; plain `adb reboot sideload` остаётся в sideload.
+- init: все `exec`-действия в `/system/etc/init` получили явный seclabel
+  `u:r:su:s0`; без него init не мог запустить `/system/bin/sh`.
+- GRUB/installer: для `MODE=sideload` теперь `androidboot.mode=recovery`,
+  `androidboot.force_normal_boot=0` и пустой `SELINUX_ENTRY` — ранний ребут
+  до старта recovery устранён. Фикс в `10_blissos` и в установленном
+  `grub.cfg` на `.198`.
+- bt_hotplug: watcher запускается через `exec_background`; старый
+  `sh -c "nohup ... &"` убивался вместе с process group exec-сервиса.
+- Проверено на `.198`: установка addon из мини-приложения из payload —
+  clone `_b` → `_a`, NDK translation + Widevine, переключение слота, ~46 с.
+
 ## 2026-11-09 — exec-сервисы BT/add-on и фикс sideload-авторебута
 
 - `bt-hotplug` и `los-tv-addon-check`/`los-tv-addon-notify`: переведены с

@@ -64,6 +64,8 @@ ROOT_UUID=$(${grub_probe} --device "$ROOT_DEVICE" --target=fs_uuid 2>/dev/null)
 emit_entry() {
 	local save=$1 extra_title=$2 id_suffix=$3 mode=$4 slot=$5 extra_args=$6 dyn_title=${7:-0}
 	local entry_id="$OS-${TITLE// /_}$id_suffix"
+	local selinux_arg=""
+	[ "$save" = "save" ] && selinux_arg="\$SELINUX_ENTRY"
 
 	if [ "$dyn_title" = "1" ]; then
 		# Кавычки обязательно двойные: иначе GRUB покажет "$MODE_SUFFIX"
@@ -93,7 +95,7 @@ emit_entry() {
 
 		echo "insmod gzio"
 		echo "$disk" | sed "s/^/$grub_tab/gm"
-		echo "linux $SRC/kernel$slot \$CMDLINE androidboot.mode=$mode $extra_args ROOT=$ROOT_DEVICE SRC=$SRC androidboot.slot_suffix=$slot androidboot.bootctrl_bootcfg=/boot/grub/android.cfg androidboot.tvres=\$TVRES androidboot.physres=\$PHYSRES androidboot.los_tv_kmsglog=\$KMSGLOG"
+		echo "linux $SRC/kernel$slot \$CMDLINE $selinux_arg androidboot.mode=$mode $extra_args ROOT=$ROOT_DEVICE SRC=$SRC androidboot.slot_suffix=$slot androidboot.bootctrl_bootcfg=/boot/grub/android.cfg androidboot.tvres=\$TVRES androidboot.physres=\$PHYSRES androidboot.los_tv_kmsglog=\$KMSGLOG"
 		echo "initrd $SRC/initrd$slot.img"
 	} | grub_add_tab
 	echo "}"
@@ -182,6 +184,20 @@ if [ -f $prefix/mode-recovery ]; then
 	set timeout=5
 	set timeout_style=menu
 fi
+set RECOVERY_EXTRA=""
+set SELINUX_ENTRY="androidboot.selinux=enforcing"
+if [ "$MODE" = "recovery" ]; then
+	set RECOVERY_EXTRA="androidboot.force_normal_boot=0"
+	set SELINUX_ENTRY=""
+fi
+if [ "$MODE" = "sideload" ]; then
+	set RECOVERY_EXTRA="androidboot.force_normal_boot=0"
+	set SELINUX_ENTRY=""
+fi
+set BOOT_MODE="$MODE"
+if [ "$MODE" = "sideload" ]; then
+	set BOOT_MODE="recovery"
+fi
 ### END los-tv ###
 EOF
 
@@ -197,7 +213,7 @@ echo "fi"
 
 # Основной пункт — активный слот из android.cfg. Динамический заголовок:
 # «BlissOS (to SideLoad)» / «BlissOS (to Recovery)» вместо простого «BlissOS».
-emit_entry save "\$MODE_SUFFIX" "-\$SLOT" "\$MODE" "\$SLOT" "" 1
+emit_entry save "\$MODE_SUFFIX" "-\$SLOT" "\$BOOT_MODE" "\$SLOT" "\$RECOVERY_EXTRA" 1
 
 # Компактное Recovery рядом с основным пунктом: stock-подменю "Recovery modes"
 # убрано (тема рисует ~6 строк, иначе пункты уезжают за экран).
