@@ -6,6 +6,17 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-09 — exec-сервисы BT/add-on и фикс sideload-авторебута
+
+- `bt-hotplug` и `los-tv-addon-check`/`los-tv-addon-notify`: переведены с
+  `service`-блоков на `exec`-действия в `/system/etc/init` — init этой сборки
+  не регистрирует service из этого каталога.
+- recovery: `sideload_auto_reboot_on_success` больше не включает UI-флаг
+  автоперезагрузки; reboot только при `status == INSTALL_SUCCESS`. Это
+  убирает ложный ребут при `adb reboot sideload` без начатой передачи.
+- Проверено: `adb reboot recovery` работает; Android→sideload доходит до
+  recovery; recovery→sideload не поддерживается (сценарий не проектировался).
+
 ## 2026-11-09 — BT hot-plug watchdog
 
 - Новый сервис `bt-hotplug` перезапускает Bluetooth, когда USB HCI-адаптер

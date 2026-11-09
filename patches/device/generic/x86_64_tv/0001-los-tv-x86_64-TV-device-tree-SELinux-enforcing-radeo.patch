@@ -1,4 +1,4 @@
-From 9ccb45926575cbadb915a2e1c247b86a2e5ea6e1 Mon Sep 17 00:00:00 2001
+From 45e709212323c087960259a8d70ed211384a4431 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Sun, 8 Nov 2026 19:08:58 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
@@ -44,7 +44,7 @@ Includes the 2026-11-08/09 fixes:
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
  bootctrl/{Android.bp.bak => Android.bp}       |     0
- bt_hotplug/bt_hotplug.rc                      |     9 +
+ bt_hotplug/bt_hotplug.rc                      |    10 +
  bt_hotplug/bt_hotplug.sh                      |   122 +
  device.mk                                     |   162 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
@@ -84,7 +84,7 @@ Includes the 2026-11-08/09 fixes:
  prebuilt/display-fixups.sh                    |   169 +
  prebuilt/los-tv-addon-check.sh                |    54 +
  prebuilt/los-tv-addon-notify.sh               |    12 +
- prebuilt/los-tv-addon-state.rc                |    24 +
+ prebuilt/los-tv-addon-state.rc                |    10 +
  prebuilt/play-store-fixups.rc                 |    12 +
  prebuilt/play-store-fixups.sh                 |    37 +
  prebuilt/preinstall-apps.rc                   |    12 +
@@ -154,7 +154,7 @@ Includes the 2026-11-08/09 fixes:
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 135 files changed, 75517 insertions(+), 90 deletions(-)
+ 135 files changed, 75504 insertions(+), 90 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -14068,19 +14068,20 @@ rename from bootctrl/Android.bp.bak
 rename to bootctrl/Android.bp
 diff --git a/bt_hotplug/bt_hotplug.rc b/bt_hotplug/bt_hotplug.rc
 new file mode 100644
-index 0000000..b106820
+index 0000000..01fe0ce
 --- /dev/null
 +++ b/bt_hotplug/bt_hotplug.rc
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,10 @@
 +# los-tv: recover Bluetooth if the USB HCI adapter is re-enumerated.
 +# The Bluetooth stack can keep a stale "connected" state when the dongle
 +# disappears and returns (e.g. a pet touches it); the watcher toggles
 +# Bluetooth so the stack re-binds to the fresh /dev/hciX.
-+service bt-hotplug /system/bin/sh /system/bin/bt_hotplug.sh
-+    class late_start
-+    user root
-+    group root system
-+    seclabel u:r:su:s0
++#
++# NOTE: this init build does not register service blocks from
++# /system/etc/init (see addon-autorestore.rc).  Use an exec action with a
++# detached process instead; the script itself waits for boot_completed.
++on property:sys.boot_completed=1
++    exec u:r:su:s0 root root -- /system/bin/sh -c "/system/bin/nohup /system/bin/sh /system/bin/bt_hotplug.sh >/dev/null 2>&1 &"
 diff --git a/bt_hotplug/bt_hotplug.sh b/bt_hotplug/bt_hotplug.sh
 new file mode 100644
 index 0000000..4593594
@@ -86715,34 +86716,20 @@ index 0000000..61e56de
 +setprop sys.los_tv.addon_needed 0
 diff --git a/prebuilt/los-tv-addon-state.rc b/prebuilt/los-tv-addon-state.rc
 new file mode 100644
-index 0000000..d75c989
+index 0000000..031e2d5
 --- /dev/null
 +++ b/prebuilt/los-tv-addon-state.rc
-@@ -0,0 +1,24 @@
-+# los-tv: состояние плитки «Проприетарные компоненты» (2026-11-01).
+@@ -0,0 +1,10 @@
++# los-tv: state of the "proprietary components" tile.
 +#
-+# Проверка запускается после загрузки (pm уже готов), уведомление — от
-+# user shell, иначе TV-панель его не покажет (см. tvres-notify).
-+
-+service los-tv-addon-check /system/bin/sh /system/bin/los-tv-addon-check.sh
-+    oneshot
-+    disabled
-+    user root
-+    group root
-+    class core
-+
-+service los-tv-addon-notify /system/bin/sh /system/bin/los-tv-addon-notify.sh
-+    oneshot
-+    disabled
-+    user shell
-+    group shell
-+    class core
-+
++# NOTE: this init build does not register service blocks from
++# /system/etc/init (see addon-autorestore.rc).  Use exec actions; both
++# scripts are short-lived/one-shot.
 +on property:sys.boot_completed=1
-+    start los-tv-addon-check
++    exec - root root -- /system/bin/sh /system/bin/los-tv-addon-check.sh
 +
 +on property:sys.los_tv.addon_needed=1
-+    start los-tv-addon-notify
++    exec - shell shell -- /system/bin/sh /system/bin/los-tv-addon-notify.sh
 diff --git a/prebuilt/play-store-fixups.rc b/prebuilt/play-store-fixups.rc
 new file mode 100755
 index 0000000..07eefc3

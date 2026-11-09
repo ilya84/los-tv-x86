@@ -1,16 +1,16 @@
-From 8f378d1302985057db93ccbeb636cb967fac6808 Mon Sep 17 00:00:00 2001
+From 15858298b3d4d0e3626a00428d1e84ed6727256d Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:38 +1000
 Subject: [PATCH] los-tv: recovery: sideload-auto-reboot-on-success for plain
  sideload
 
 ---
- recovery.cpp      | 13 +++++++++++--
+ recovery.cpp      | 11 ++++++++++-
  recovery_main.cpp | 24 ++++++++++++++++++++++--
- 2 files changed, 33 insertions(+), 4 deletions(-)
+ 2 files changed, 32 insertions(+), 3 deletions(-)
 
 diff --git a/recovery.cpp b/recovery.cpp
-index 5075d581..5b58d3bb 100644
+index 5075d581..a5a67155 100644
 --- a/recovery.cpp
 +++ b/recovery.cpp
 @@ -802,6 +802,7 @@ Device::BuiltinAction start_recovery(Device* device, const std::vector<std::stri
@@ -39,7 +39,7 @@ index 5075d581..5b58d3bb 100644
          } else if (option == "shutdown_after") {
            shutdown_after = true;
          } else if (option == "update_package") {
-@@ -1047,14 +1052,18 @@ Device::BuiltinAction start_recovery(Device* device, const std::vector<std::stri
+@@ -1047,6 +1052,9 @@ Device::BuiltinAction start_recovery(Device* device, const std::vector<std::stri
      // mode. When 'sideload-auto-reboot' is used, text display will NOT be turned on by default. And
      // it will reboot after sideload finishes even if there are errors. This is to enable automated
      // testing.
@@ -49,9 +49,8 @@ index 5075d581..5b58d3bb 100644
      save_current_log = true;
      if (!sideload_auto_reboot) {
        ui->ShowText(true);
-     }
--    ui->SetSideloadAutoReboot(sideload_auto_reboot);
-+    ui->SetSideloadAutoReboot(sideload_auto_reboot || sideload_auto_reboot_on_success);
+@@ -1054,7 +1062,8 @@ Device::BuiltinAction start_recovery(Device* device, const std::vector<std::stri
+     ui->SetSideloadAutoReboot(sideload_auto_reboot);
      status = ApplyFromAdb(device, false /* rescue_mode */, &next_action);
      ui->Print("\nInstall from ADB complete (status: %d).\n", status);
 -    if (sideload_auto_reboot) {
