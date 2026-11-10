@@ -6,6 +6,36 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-10 — YouTube TV переживает перепрошивку (preinstall)
+
+- `prebuilt_etc`-модули init-rc теперь устанавливаются с явным `filename:
+  "*.rc"`. Без него файлы назывались `*-rc`, init регистрировал service, но
+  не `on-property`, и `preinstall-apps`, `play-store-fixups`,
+  `display-fixups`, `checkin-enabler`, `tvres-notify` молча не запускались.
+- Эти скрипты запускаются через `exec`/`exec_background` с `seclabel
+  u:r:su:s0`: service без seclabel не мог выполнить `/system/bin/sh` под
+  SELinux Enforcing.
+- `preinstall-apps.sh` сам ставит YouTube TV (base+split через
+  install-session), принимает абсолютные пути и ищет
+  `split_config.arm64_v8a.apk` в `/data/media/0/los-tv-proprietary`, если
+  add-on/recovery не скопировал его в `/system/etc/preinstall`.
+- Ghost после перепрошивки (пакет в PackageManager, APK-каталога нет)
+  автоматически чинится при `sys.boot_completed`; осознанно удалённое
+  приложение (каталога данных нет) не воскрешается.
+- Проверено на `intel` `_b`: reflash → YouTube base+split, Play Store
+  «Открыть»; удаление `/data/app/<youtube>` + ребут → починка за ~14 с.
+  Коммит device tree `ceeeae6`.
+- Собраны ISO и полная A/B OTA с RTP-сендером, TvSettings и этим фиксом.
+  Холодный sideload OTA на `intel`: add-on-autorestore сам поставил
+  компоненты в `_a`, новый recovery скопировал base+split YouTube в
+  `/system/etc/preinstall`, после загрузки — Enforcing, YouTube/Play Store,
+  RTP-сендер, mediaextractor и bt_hotplug на месте.
+  ISO: md5 `1c40b137a89b461b3429a684fefdc747`;
+  OTA: md5 `643b5f4049ebd5bab25988d1ed322f35`.
+- Публикация: device tree `179d7e2` (`los-tv` и `lineage-23.2`),
+  aaropa `bdb615c` (`los-tv` и `lineage-23.2`); TvSettings — обновлённый
+  единый патч в `patches/`.
+
 ## 2026-11-09 — target reboot sideload/GRUB, addon install, bt_hotplug
 
 - recovery: `sideload_auto_reboot_on_success` больше не включает UI-флаг

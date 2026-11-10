@@ -1,22 +1,27 @@
-From 2728fad8c3ed292a6ed2a2a31d2f18353308ac3d Mon Sep 17 00:00:00 2001
+From 1c8edb5700316db7a2db6e2fae75c267b4da796b Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Sat, 7 Nov 2026 22:46:36 +1000
-Subject: [PATCH] los-tv: TV settings: BLE remotes, x86
- display/resolution/network defaults
+Date: Tue, 10 Nov 2026 22:28:57 +1000
+Subject: [PATCH] los-tv: TV settings: BLE remotes, x86 display/network
+ defaults, RTP sender
 
-- Add support for custom BLE remotes with uncategorized class 0x1f00
-  (such as Mi TV remotes).
-- x86 display/resolution defaults; keep the "Add accessory" entry
-  visible while Bluetooth is off/unavailable.
+Squashed publication branch. Includes the BLE remote pairing support,
+x86 display/resolution/network defaults and the native RTP sender screen
+(switch, status, bitrate, editable host/port).
 ---
- .../accessories/AccessoriesFragment.java      |  17 ++-
+ Settings/res/values/strings_audio_rtp.xml     |  30 +++
+ Settings/res/xml/audio_rtp_sender.xml         |  56 ++++
+ Settings/res/xml/device.xml                   |   6 +
+ .../res/xml/device_info_settings_vendor.xml   |  11 +
+ Settings/res/xml/device_info_settings_x.xml   |  11 +
+ Settings/res/xml/device_two_panel.xml         |   6 +
+ .../accessories/AccessoriesFragment.java      |  17 +-
  .../accessories/BluetoothDevicePairer.java    |   9 +-
  .../accessories/InputDeviceCriteria.java      |   7 +-
- .../connectivity/EditIpSettingsActivity.java  |   8 ++
+ .../connectivity/EditIpSettingsActivity.java  |   8 +
  .../EditProxySettingsActivity.java            |   6 +
  .../settings/connectivity/EthernetConfig.java |   4 +-
- .../connectivity/NetworkDefaults.java         | 136 ++++++++++++++++++
- .../setup/AdvancedOptionsFlowInfo.java        |  53 +++++++
+ .../connectivity/NetworkDefaults.java         | 136 ++++++++++
+ .../setup/AdvancedOptionsFlowInfo.java        |  53 ++++
  .../connectivity/setup/Dns1State.java         |   4 +-
  .../connectivity/setup/Dns2State.java         |   4 +-
  .../connectivity/setup/GatewayState.java      |   4 +-
@@ -25,11 +30,222 @@ Subject: [PATCH] los-tv: TV settings: BLE remotes, x86
  .../connectivity/setup/ProxyBypassState.java  |   4 +-
  .../setup/ProxyHostNameState.java             |   4 +-
  .../connectivity/setup/ProxyPortState.java    |   4 +-
- .../display/daydream/DaydreamFragment.java    |  16 +++
- .../ResolutionSelectionFragment.java          |  13 ++
- 18 files changed, 280 insertions(+), 21 deletions(-)
+ .../device/audio/AudioRtpSenderFragment.java  | 239 ++++++++++++++++++
+ .../display/daydream/DaydreamFragment.java    |  16 ++
+ .../displaysound/DisplaySoundFragment.kt      |   6 +-
+ .../ResolutionSelectionFragment.java          |  13 +
+ .../settings/deviceadmin/DeviceAdminAdd.java  |  15 +-
+ .../deviceadmin/DeviceAdminListItem.java      |   2 +-
+ 28 files changed, 647 insertions(+), 36 deletions(-)
+ create mode 100644 Settings/res/values/strings_audio_rtp.xml
+ create mode 100644 Settings/res/xml/audio_rtp_sender.xml
  create mode 100644 Settings/src/com/android/tv/settings/connectivity/NetworkDefaults.java
+ create mode 100644 Settings/src/com/android/tv/settings/device/audio/AudioRtpSenderFragment.java
 
+diff --git a/Settings/res/values/strings_audio_rtp.xml b/Settings/res/values/strings_audio_rtp.xml
+new file mode 100644
+index 000000000..8789e93ad
+--- /dev/null
++++ b/Settings/res/values/strings_audio_rtp.xml
+@@ -0,0 +1,30 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Copyright (C) 2026 The LineageOS Project
++
++    Licensed under the Apache License, Version 2.0 (the "License");
++    you may not use this file except in compliance with the License.
++    You may obtain a copy of the License at
++
++         http://www.apache.org/licenses/LICENSE-2.0
++
++    Unless required by applicable law or agreed to in writing, software
++    distributed under the License is distributed on an "AS IS" BASIS,
++    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++    See the License for the specific language governing permissions and
++    limitations under the License.
++-->
++<resources>
++    <string name="audio_rtp_sender_title">Звук по RTP</string>
++    <string name="audio_rtp_sender_summary">Отправка звука телевизора по сети протоколу RTP</string>
++    <string name="audio_rtp_sender_enable_title">Отправлять звук по сети</string>
++    <string name="audio_rtp_sender_enable_summary">Включить передачу звука по RTP</string>
++    <string name="audio_rtp_sender_status_title">Состояние</string>
++    <string name="audio_rtp_sender_target_title">Приёмник</string>
++    <string name="audio_rtp_sender_host_title">Адрес</string>
++    <string name="audio_rtp_sender_port_title">Порт</string>
++    <string name="audio_rtp_sender_invalid_host">Неверный IPv4-адрес</string>
++    <string name="audio_rtp_sender_invalid_port">Порт должен быть от 1 до 65535</string>
++    <string name="audio_rtp_sender_note_title">Примечание</string>
++    <string name="audio_rtp_sender_note_summary">Скорость показана как RTP/UDP/IP без Ethernet. Отключение освобождает захват звука; резервный путь scrcpy на audiohub управляется отдельно.</string>
++</resources>
+diff --git a/Settings/res/xml/audio_rtp_sender.xml b/Settings/res/xml/audio_rtp_sender.xml
+new file mode 100644
+index 000000000..da5f58f87
+--- /dev/null
++++ b/Settings/res/xml/audio_rtp_sender.xml
+@@ -0,0 +1,56 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++    Copyright (C) 2026 The LineageOS Project
++
++    Licensed under the Apache License, Version 2.0 (the "License");
++    you may not use this file except in compliance with the License.
++    You may obtain a copy of the License at
++
++         http://www.apache.org/licenses/LICENSE-2.0
++
++    Unless required by applicable law or agreed to in writing, software
++    distributed under the License is distributed on an "AS IS" BASIS,
++    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++    See the License for the specific language governing permissions and
++    limitations under the License.
++-->
++<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
++    android:title="@string/audio_rtp_sender_title">
++
++    <SwitchPreference
++        android:key="audio_rtp_enabled"
++        android:title="@string/audio_rtp_sender_enable_title"
++        android:summary="@string/audio_rtp_sender_enable_summary"
++        android:persistent="false"/>
++
++    <Preference
++        android:key="audio_rtp_status"
++        android:title="@string/audio_rtp_sender_status_title"
++        android:selectable="false"/>
++
++    <PreferenceCategory
++        android:title="@string/audio_rtp_sender_target_title">
++
++        <EditTextPreference
++            android:key="audio_rtp_host"
++            android:title="@string/audio_rtp_sender_host_title"
++            android:dialogTitle="@string/audio_rtp_sender_host_title"
++            android:persistent="false"
++            android:inputType="textUri"/>
++
++        <EditTextPreference
++            android:key="audio_rtp_port"
++            android:title="@string/audio_rtp_sender_port_title"
++            android:dialogTitle="@string/audio_rtp_sender_port_title"
++            android:persistent="false"
++            android:inputType="number"/>
++
++    </PreferenceCategory>
++
++    <Preference
++        android:key="audio_rtp_note"
++        android:title="@string/audio_rtp_sender_note_title"
++        android:summary="@string/audio_rtp_sender_note_summary"
++        android:selectable="false"/>
++
++</PreferenceScreen>
+diff --git a/Settings/res/xml/device.xml b/Settings/res/xml/device.xml
+index 2dda5927f..6ef9d50f0 100644
+--- a/Settings/res/xml/device.xml
++++ b/Settings/res/xml/device.xml
+@@ -59,6 +59,12 @@
+         android:icon="@drawable/ic_display_sound"
+         android:key="sound_effects"
+         android:title="@string/device_display_sound"/>
++    <Preference
++        android:fragment="com.android.tv.settings.device.audio.AudioRtpSenderFragment"
++        android:icon="@drawable/ic_volume_up"
++        android:key="audio_rtp_sender"
++        android:title="@string/audio_rtp_sender_title"
++        android:summary="@string/audio_rtp_sender_summary"/>
+     <Preference
+         android:fragment="com.android.tv.settings.device.StorageSummaryFragment"
+         android:icon="@drawable/ic_storage"
+diff --git a/Settings/res/xml/device_info_settings_vendor.xml b/Settings/res/xml/device_info_settings_vendor.xml
+index 09c614367..8e5ba1545 100644
+--- a/Settings/res/xml/device_info_settings_vendor.xml
++++ b/Settings/res/xml/device_info_settings_vendor.xml
+@@ -107,6 +107,11 @@
+         android:title="@string/fcc_equipment_id"
+         android:summary="@string/device_info_default"/>
+ 
++    <!-- LineageOS version -->
++    <Preference android:key="lineage_version"
++        android:title="@*lineageos.platform:string/lineage_version"
++        android:summary="@string/device_info_default"/>
++
+     <!-- Device Baseband version -->
+     <Preference android:key="baseband_version"
+         android:title="@string/baseband_version"
+@@ -117,6 +122,11 @@
+         android:title="@string/kernel_version"
+         android:summary="@string/device_info_default"/>
+ 
++    <!-- Device Build date -->
++    <Preference android:key="build_date"
++        android:title="@*lineageos.platform:string/build_date"
++        android:summary="@string/device_info_default"/>
++
+     <!-- Device OpenGL driver -->
+     <Preference android:key="opengl_version"
+         android:title="@string/opengl_version"
+@@ -126,6 +136,7 @@
+     <Preference android:key="vulkan_version"
+         android:title="@string/vulkan_version"
+         android:summary="@string/device_info_default"/>
++        android:summary="@string/device_info_default"/>
+ 
+     <!-- Detailed build version -->
+     <Preference android:key="build_number"
+diff --git a/Settings/res/xml/device_info_settings_x.xml b/Settings/res/xml/device_info_settings_x.xml
+index 93cf2d7b2..4af9ea190 100644
+--- a/Settings/res/xml/device_info_settings_x.xml
++++ b/Settings/res/xml/device_info_settings_x.xml
+@@ -109,6 +109,11 @@
+         android:title="@string/fcc_equipment_id"
+         android:summary="@string/device_info_default"/>
+ 
++    <!-- LineageOS version -->
++    <Preference android:key="lineage_version"
++        android:title="@*lineageos.platform:string/lineage_version"
++        android:summary="@string/device_info_default"/>
++
+     <!-- Device Baseband version -->
+     <Preference android:key="baseband_version"
+         android:title="@string/baseband_version"
+@@ -119,6 +124,11 @@
+         android:title="@string/kernel_version"
+         android:summary="@string/device_info_default"/>
+ 
++    <!-- Device Build date -->
++    <Preference android:key="build_date"
++        android:title="@*lineageos.platform:string/build_date"
++        android:summary="@string/device_info_default"/>
++
+     <!-- Device OpenGL driver -->
+     <Preference android:key="opengl_version"
+         android:title="@string/opengl_version"
+@@ -128,6 +138,7 @@
+     <Preference android:key="vulkan_version"
+         android:title="@string/vulkan_version"
+         android:summary="@string/device_info_default"/>
++        android:summary="@string/device_info_default"/>
+ 
+     <!-- Detailed build version -->
+     <Preference android:key="build_number"
+diff --git a/Settings/res/xml/device_two_panel.xml b/Settings/res/xml/device_two_panel.xml
+index fe7351b98..b7475b4a7 100644
+--- a/Settings/res/xml/device_two_panel.xml
++++ b/Settings/res/xml/device_two_panel.xml
+@@ -91,6 +91,12 @@
+         android:icon="@drawable/ic_input"
+         android:key="inputs"
+         android:title="@string/system_inputs" />
++    <Preference
++        android:fragment="com.android.tv.settings.device.audio.AudioRtpSenderFragment"
++        android:icon="@drawable/ic_volume_up"
++        android:key="audio_rtp_sender"
++        android:title="@string/audio_rtp_sender_title"
++        android:summary="@string/audio_rtp_sender_summary"/>
+     <com.android.tv.twopanelsettings.slices.SlicePreference
+         android:icon="@drawable/ic_internal_settings"
+         android:key="overlay_internal"
 diff --git a/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java b/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
 index 0c0be9573..b36bbd0f7 100644
 --- a/Settings/src/com/android/tv/settings/accessories/AccessoriesFragment.java
@@ -526,6 +742,251 @@ index 1dc2b6a3b..459147d5e 100644
              }
  
              Context context = getActivity();
+diff --git a/Settings/src/com/android/tv/settings/device/audio/AudioRtpSenderFragment.java b/Settings/src/com/android/tv/settings/device/audio/AudioRtpSenderFragment.java
+new file mode 100644
+index 000000000..44478d162
+--- /dev/null
++++ b/Settings/src/com/android/tv/settings/device/audio/AudioRtpSenderFragment.java
+@@ -0,0 +1,239 @@
++/*
++ * Copyright (C) 2026 The LineageOS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++
++package com.android.tv.settings.device.audio;
++
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.SystemProperties;
++import android.text.TextUtils;
++import android.widget.Toast;
++
++import androidx.annotation.Keep;
++import androidx.leanback.preference.LeanbackPreferenceFragmentCompat;
++import androidx.preference.EditTextPreference;
++import androidx.preference.Preference;
++import androidx.preference.SwitchPreference;
++
++import com.android.tv.settings.R;
++
++import java.util.Locale;
++import java.util.regex.Pattern;
++
++/**
++ * los-tv: user control for the native audio RTP sender.
++ *
++ * The daemon owns the capture streams; this screen flips the persistent
++ * properties and shows the daemon's state/stats. Host/port changes are
++ * applied by the daemon on the fly (it restarts the UDP session).
++ */
++@Keep
++public class AudioRtpSenderFragment extends LeanbackPreferenceFragmentCompat {
++
++    private static final String PROP_ENABLED = "persist.sys.audio_rtp.enabled";
++    private static final String PROP_HOST = "persist.sys.audio_rtp.host";
++    private static final String PROP_PORT = "persist.sys.audio_rtp.port";
++    private static final String PROP_STATE = "sys.audio_rtp.state";
++    private static final String PROP_STATS = "sys.audio_rtp.stats";
++    private static final String PROP_SERVICE = "init.svc.audio-rtp-sender";
++
++    private static final String DEFAULT_HOST = "192.168.5.150";
++    private static final String DEFAULT_PORT = "5004";
++
++    private static final Pattern IPV4 = Pattern.compile(
++            "^((25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}"
++                    + "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$");
++
++    private SwitchPreference mEnabled;
++    private Preference mStatus;
++    private EditTextPreference mHost;
++    private EditTextPreference mPort;
++
++    private final Handler mHandler = new Handler(Looper.getMainLooper());
++    private final Runnable mPoll = new Runnable() {
++        @Override
++        public void run() {
++            updateStatus();
++            mHandler.postDelayed(this, 1000);
++        }
++    };
++
++    @Override
++    public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
++        setPreferencesFromResource(R.xml.audio_rtp_sender, rootKey);
++
++        mEnabled = findPreference("audio_rtp_enabled");
++        mStatus = findPreference("audio_rtp_status");
++        mHost = findPreference("audio_rtp_host");
++        mPort = findPreference("audio_rtp_port");
++
++        if (mEnabled != null) {
++            mEnabled.setChecked(SystemProperties.getBoolean(PROP_ENABLED, true));
++            mEnabled.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
++                @Override
++                public boolean onPreferenceChange(Preference preference, Object newValue) {
++                    final boolean enabled = (Boolean) newValue;
++                    SystemProperties.set(PROP_ENABLED, enabled ? "1" : "0");
++                    updateStatus();
++                    return true;
++                }
++            });
++        }
++
++        setupHostPort();
++        updateStatus();
++    }
++
++    private void setupHostPort() {
++        final String host = SystemProperties.get(PROP_HOST, DEFAULT_HOST);
++        final String port = SystemProperties.get(PROP_PORT, DEFAULT_PORT);
++
++        if (mHost != null) {
++            mHost.setText(host);
++            mHost.setSummary(host);
++            mHost.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
++                @Override
++                public boolean onPreferenceChange(Preference preference, Object newValue) {
++                    final String value = newValue == null ? "" : newValue.toString().trim();
++                    if (!IPV4.matcher(value).matches()) {
++                        Toast.makeText(getContext(), R.string.audio_rtp_sender_invalid_host,
++                                Toast.LENGTH_SHORT).show();
++                        return false;
++                    }
++                    SystemProperties.set(PROP_HOST, value);
++                    preference.setSummary(value);
++                    return true;
++                }
++            });
++        }
++
++        if (mPort != null) {
++            mPort.setText(port);
++            mPort.setSummary(port);
++            mPort.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
++                @Override
++                public boolean onPreferenceChange(Preference preference, Object newValue) {
++                    final String value = newValue == null ? "" : newValue.toString().trim();
++                    int parsed;
++                    try {
++                        parsed = Integer.parseInt(value);
++                    } catch (NumberFormatException e) {
++                        parsed = -1;
++                    }
++                    if (parsed < 1 || parsed > 65535) {
++                        Toast.makeText(getContext(), R.string.audio_rtp_sender_invalid_port,
++                                Toast.LENGTH_SHORT).show();
++                        return false;
++                    }
++                    final String normalized = String.valueOf(parsed);
++                    SystemProperties.set(PROP_PORT, normalized);
++                    preference.setSummary(normalized);
++                    return true;
++                }
++            });
++        }
++    }
++
++    @Override
++    public void onResume() {
++        super.onResume();
++        mHandler.post(mPoll);
++    }
++
++    @Override
++    public void onPause() {
++        mHandler.removeCallbacks(mPoll);
++        super.onPause();
++    }
++
++    private void updateStatus() {
++        if (mStatus == null) {
++            return;
++        }
++
++        final boolean enabled = mEnabled != null && mEnabled.isChecked();
++        final String service = SystemProperties.get(PROP_SERVICE, "");
++        final String state = SystemProperties.get(PROP_STATE, "");
++        final String stats = SystemProperties.get(PROP_STATS, "");
++
++        final String pps = statValue(stats, "pps");
++        final String kbps = statValue(stats, "kbps");
++        final String errors = statValue(stats, "err");
++
++        final String text;
++        if (!"running".equals(service)) {
++            text = "Сервис не запущен ("
++                    + (TextUtils.isEmpty(service) ? "нет" : service) + ")";
++        } else if (!enabled) {
++            text = "Выключено";
++        } else if ("on".equals(state)) {
++            final StringBuilder sb = new StringBuilder("Передача идёт");
++            if (!TextUtils.isEmpty(pps)) {
++                sb.append(" · ").append(pps).append(" пакетов/с");
++            }
++            final String speed = formatSpeed(kbps);
++            if (!TextUtils.isEmpty(speed)) {
++                sb.append(" · ").append(speed);
++            }
++            if (!TextUtils.isEmpty(errors) && !"0".equals(errors)) {
++                sb.append(" · ошибок: ").append(errors);
++            }
++            text = sb.toString();
++        } else if ("starting".equals(state)) {
++            text = "Запуск…";
++        } else if ("error".equals(state)) {
++            text = "Ошибка запуска (см. logcat)";
++        } else if (TextUtils.isEmpty(state)) {
++            text = "Состояние неизвестно";
++        } else {
++            text = "Состояние: " + state;
++        }
++
++        mStatus.setSummary(text);
++    }
++
++    private static String statValue(String stats, String suffix) {
++        if (TextUtils.isEmpty(stats)) {
++            return "";
++        }
++        for (String token : stats.split("\\s+")) {
++            if (suffix.equals("err")) {
++                if (token.startsWith("err=")) {
++                    return token.substring(4);
++                }
++            } else if (token.endsWith(suffix)) {
++                return token.substring(0, token.length() - suffix.length());
++            }
++        }
++        return "";
++    }
++
++    private static String formatSpeed(String kbps) {
++        if (TextUtils.isEmpty(kbps)) {
++            return "";
++        }
++        try {
++            final double value = Double.parseDouble(kbps);
++            if (value >= 1000.0) {
++                return String.format(Locale.getDefault(), "%.2f Мбит/с", value / 1000.0);
++            }
++            return String.format(Locale.getDefault(), "%.0f кбит/с", value);
++        } catch (NumberFormatException e) {
++            return "";
++        }
++    }
++}
 diff --git a/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java b/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java
 index e4f3493ff..8c437026a 100644
 --- a/Settings/src/com/android/tv/settings/device/display/daydream/DaydreamFragment.java
@@ -567,6 +1028,26 @@ index e4f3493ff..8c437026a 100644
              if (!Objects.equals(mBackend.getActiveDream(), dreamInfo.componentName)) {
                  mBackend.setActiveDream(dreamInfo.componentName);
              }
+diff --git a/Settings/src/com/android/tv/settings/device/displaysound/DisplaySoundFragment.kt b/Settings/src/com/android/tv/settings/device/displaysound/DisplaySoundFragment.kt
+index c51f48f8a..a963c4199 100644
+--- a/Settings/src/com/android/tv/settings/device/displaysound/DisplaySoundFragment.kt
++++ b/Settings/src/com/android/tv/settings/device/displaysound/DisplaySoundFragment.kt
+@@ -95,10 +95,14 @@ class DisplaySoundFragment : SettingsPreferenceFragment(), DisplayManager.Displa
+ 
+     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?,
+         savedInstanceState: Bundle?): View {
+-        maybeConfigurePreferences()
+         return checkNotNull(super.onCreateView(inflater, container, savedInstanceState))
+     }
+ 
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        super.onViewCreated(view, savedInstanceState)
++        maybeConfigurePreferences()
++    }
++
+     override fun onSlice(slice: Slice?) {
+         mSliceShard = null
+         if (slice == null) {
 diff --git a/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java b/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java
 index fcc0cdf9f..1c5472f28 100644
 --- a/Settings/src/com/android/tv/settings/device/displaysound/ResolutionSelectionFragment.java
@@ -591,3 +1072,87 @@ index fcc0cdf9f..1c5472f28 100644
          final String summary = getResources().getString(R.string.resolution_display_mode,
                  ResolutionSelectionUtils.getResolutionString(
                          mAutoMode.getPhysicalWidth(), mAutoMode.getPhysicalHeight()),
+diff --git a/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminAdd.java b/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminAdd.java
+index 7fd966f8d..6685c0d42 100644
+--- a/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminAdd.java
++++ b/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminAdd.java
+@@ -18,7 +18,6 @@ package com.android.tv.settings.deviceadmin;
+ 
+ import android.app.Activity;
+ import android.app.ActivityManager;
+-import android.app.AppOpsManager;
+ import android.app.Dialog;
+ import android.app.admin.DeviceAdminInfo;
+ import android.app.admin.DeviceAdminReceiver;
+@@ -35,10 +34,8 @@ import android.content.pm.PackageManager.NameNotFoundException;
+ import android.content.pm.ResolveInfo;
+ import android.content.pm.UserInfo;
+ import android.content.res.Resources;
+-import android.os.Binder;
+ import android.os.Bundle;
+ import android.os.Handler;
+-import android.os.IBinder;
+ import android.os.RemoteCallback;
+ import android.os.RemoteException;
+ import android.os.UserHandle;
+@@ -81,10 +78,7 @@ public class DeviceAdminAdd extends FragmentActivity {
+     public static final String EXTRA_CALLED_FROM_SUPPORT_DIALOG =
+             "android.app.extra.CALLED_FROM_SUPPORT_DIALOG";
+ 
+-    private final IBinder mToken = new Binder();
+-
+     DevicePolicyManager mDPM;
+-    AppOpsManager mAppOps;
+     DeviceAdminInfo mDeviceAdmin;
+ 
+     boolean mRefreshing;
+@@ -115,7 +109,7 @@ public class DeviceAdminAdd extends FragmentActivity {
+         super.onCreate(icicle);
+ 
+         mDPM = getSystemService(DevicePolicyManager.class);
+-        mAppOps = getSystemService(AppOpsManager.class);
++        getWindow().setHideOverlayWindows(true);
+         PackageManager packageManager = getPackageManager();
+ 
+         if ((getIntent().getFlags() & Intent.FLAG_ACTIVITY_NEW_TASK) != 0) {
+@@ -328,9 +322,6 @@ public class DeviceAdminAdd extends FragmentActivity {
+         if (!mAddingProfileOwner) {
+             updateInterface();
+         }
+-        // As long as we are running, don't let anyone overlay stuff on top of the screen.
+-        mAppOps.setUserRestriction(AppOpsManager.OP_SYSTEM_ALERT_WINDOW, true, mToken);
+-        mAppOps.setUserRestriction(AppOpsManager.OP_TOAST_WINDOW, true, mToken);
+     }
+ 
+     @Override
+@@ -338,8 +329,6 @@ public class DeviceAdminAdd extends FragmentActivity {
+         super.onPause();
+         // This just greys out the button. The actual listener is attached to R.id.restricted_action
+         mActionButton.setEnabled(false);
+-        mAppOps.setUserRestriction(AppOpsManager.OP_SYSTEM_ALERT_WINDOW, false, mToken);
+-        mAppOps.setUserRestriction(AppOpsManager.OP_TOAST_WINDOW, false, mToken);
+         try {
+             ActivityManager.getService().resumeAppSwitches();
+         } catch (RemoteException e) {
+@@ -457,7 +446,7 @@ public class DeviceAdminAdd extends FragmentActivity {
+         mAdminName.setText(mDeviceAdmin.loadLabel(getPackageManager()));
+         try {
+             mAdminDescription.setText(
+-                    mDeviceAdmin.loadDescription(getPackageManager()));
++                    mDeviceAdmin.loadDescriptionSafe(getPackageManager()));
+             mAdminDescription.setVisibility(View.VISIBLE);
+         } catch (Resources.NotFoundException e) {
+             mAdminDescription.setVisibility(View.GONE);
+diff --git a/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminListItem.java b/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminListItem.java
+index f1acf5dda..df5ace602 100644
+--- a/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminListItem.java
++++ b/Settings/src/com/android/tv/settings/deviceadmin/DeviceAdminListItem.java
+@@ -52,7 +52,7 @@ public class DeviceAdminListItem implements Comparable<DeviceAdminListItem> {
+         final PackageManager pm = context.getPackageManager();
+         mName = mInfo.loadLabel(pm);
+         try {
+-            mDescription = mInfo.loadDescription(pm);
++            mDescription = mInfo.loadDescriptionSafe(pm);
+         } catch (Resources.NotFoundException exception) {
+             Log.w(TAG, "Setting description to null because can't find resource: " + mKey);
+         }

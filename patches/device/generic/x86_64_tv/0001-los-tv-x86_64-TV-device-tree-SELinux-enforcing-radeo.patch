@@ -1,23 +1,13 @@
-From cce61646ece2e5f6e09291001445be0fd8c855c7 Mon Sep 17 00:00:00 2001
+From 179d7e27c6cd24c1e0f251a37d7e9c86e2db9810 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Sun, 8 Nov 2026 19:08:58 +1000
-Subject: [PATCH] los-tv: x86_64 TV device tree (SELinux enforcing, radeon
- codecs, keylayout, GRUB recovery, addon)
+Date: Tue, 10 Nov 2026 22:28:04 +1000
+Subject: [PATCH] los-tv: x86_64 TV device tree (RTP sender, YouTube
+ preinstall, mediaextractor, RTC UTC)
 
-Includes the 2026-11-08/09 fixes:
-- /system/metadata placeholder installed via root/... so the initrd can
-  mount tmpfs at /metadata (image root); aconfigd needs it or
-  feature-flagged permissions are dropped and system_server aborts in
-  AppOpService (RANGING). The /metadata mount itself lives in the initrd.
-- los-tv-boot-mode.sh writes MODE to android.cfg from the BCB, so CLI
-  reboots (adb reboot recovery) enter recovery instead of rebooting early.
-- init.recovery.sh resets MODE=normal when recovery boots, preventing a
-  recovery loop on the next reboot.
-
-- bt_hotplug: watchdog restart of Bluetooth when the USB HCI adapter is
-  re-enumerated (e.g. a pet touches the dongle).  Android can keep a stale
-  HOGP "connected" state after the old HCI fd dies; the watcher notices the
-  re-created hciN kobject and toggles Bluetooth so the stack re-binds.
+Squashed los-tv branch for publication. Includes the native audio RTP
+sender and TvSettings controls, RTC in UTC, mediaextractor boot fix,
+bt_hotplug watcher, YouTube preinstall (base+split install-session,
+ghost-safe repair after reflash) and the 2026-11-10 init-rc/preinstall fix.
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -26,8 +16,8 @@ Includes the 2026-11-08/09 fixes:
  addon/Android.bp                              |    32 +
  ...roid.hardware.drm-service-lazy.widevine.rc |    12 +
  addon/links.txt                               |    16 +
- addon/los-tv-addon-boot.sh                    |   300 +
- addon/los-tv-addon.sh                         |   717 +
+ addon/los-tv-addon-boot.sh                    |   304 +
+ addon/los-tv-addon.sh                         |   734 +
  addon/los-tv-gpt.cpp                          |   132 +
  addon/los-tv-msg.cpp                          |   253 +
  ..._android.hardware.drm-service.widevine.xml |    10 +
@@ -43,10 +33,13 @@ Includes the 2026-11-08/09 fixes:
  addonapp/res/values/strings.xml               |    52 +
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
+ audio_sender/Android.bp                       |    33 +
+ audio_sender/audio_sender.cpp                 |   435 +
+ audio_sender/audio_sender.rc                  |    17 +
  bootctrl/{Android.bp.bak => Android.bp}       |     0
  bt_hotplug/bt_hotplug.rc                      |    11 +
- bt_hotplug/bt_hotplug.sh                      |   122 +
- device.mk                                     |   162 +-
+ bt_hotplug/bt_hotplug.sh                      |   118 +
+ device.mk                                     |   169 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
  .../client/{Android.bp.bak => Android.bp}     |     0
  .../common/{Android.bp.bak => Android.bp}     |     0
@@ -57,7 +50,7 @@ Includes the 2026-11-08/09 fixes:
  init.fstab.sh                                 |     7 +-
  init.recovery.sh                              |   153 +
  init.recovery.x86.rc                          |    15 +
- init.sh                                       |    90 +-
+ init.sh                                       |    94 +-
  init.x86.rc                                   |    16 +
  keylayout/Generic.kl                          |   496 +
  kmsglog/los-tv-kmsglog                        |   Bin 0 -> 9216 bytes
@@ -74,24 +67,24 @@ Includes the 2026-11-08/09 fixes:
  .../SettingsProvider/res/values/defaults.xml  |     8 +-
  packages.mk                                   |     2 +-
  permissions/google_features.xml               |    10 +
- prebuilt/Android.bp                           |   233 +
+ prebuilt/Android.bp                           |   241 +
  prebuilt/README.md                            |    59 +
  prebuilt/addon-autorestore.rc                 |     7 +
  prebuilt/addon-autorestore.sh                 |    68 +
- prebuilt/checkin-enabler.rc                   |    12 +
+ prebuilt/checkin-enabler.rc                   |     8 +
  prebuilt/checkin-enabler.sh                   |    30 +
- prebuilt/display-fixups.rc                    |    12 +
+ prebuilt/display-fixups.rc                    |     9 +
  prebuilt/display-fixups.sh                    |   169 +
  prebuilt/los-tv-addon-check.sh                |    54 +
  prebuilt/los-tv-addon-notify.sh               |    12 +
  prebuilt/los-tv-addon-state.rc                |    11 +
- prebuilt/play-store-fixups.rc                 |    12 +
+ prebuilt/play-store-fixups.rc                 |     8 +
  prebuilt/play-store-fixups.sh                 |    37 +
  prebuilt/preinstall-apps.rc                   |    12 +
  ...rivapp-permissions-com.android.vending.xml |    77 +
- prebuilt/tvres-notify.rc                      |    13 +
+ prebuilt/tvres-notify.rc                      |     9 +
  prebuilt/tvres-notify.sh                      |    34 +
- prebuilt/user/preinstall-apps.sh              |    98 +
+ prebuilt/user/preinstall-apps.sh              |   177 +
  .../system/lib/firmware/rtl_nic/rtl8105e-1.fw |   Bin 0 -> 2076 bytes
  .../system/lib/firmware/rtl_nic/rtl8106e-1.fw |   Bin 0 -> 1856 bytes
  .../system/lib/firmware/rtl_nic/rtl8106e-2.fw |   Bin 0 -> 832 bytes
@@ -139,11 +132,14 @@ Includes the 2026-11-08/09 fixes:
  scripts/los-tv-boot-mode.sh                   |    59 +
  seccomp/mediaswcodec.policy                   |     1 +
  .../thermal-daemon/hal_thermal_intel.te       |     3 +
- sepolicy/plat_private/file_contexts           |    35 +-
+ sepolicy/plat_private/audio_sender.te         |    51 +
+ sepolicy/plat_private/file_contexts           |    36 +-
  sepolicy/plat_private/genfs_contexts          |     9 +-
  sepolicy/plat_private/los-tv-init.te          |    77 +
  sepolicy/plat_private/los-tv-kmsglog.te       |    27 +
  sepolicy/plat_private/los-tv.te               |    70 +
+ sepolicy/plat_private/property.te             |     8 +
+ sepolicy/plat_private/property_contexts       |     5 +
  sepolicy/plat_private/surfaceflinger.te       |    21 +-
  sepolicy/plat_private/ueventd.te              |     7 +
  sepolicy/plat_private/vold.te                 |     6 +
@@ -154,7 +150,7 @@ Includes the 2026-11-08/09 fixes:
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 135 files changed, 75508 insertions(+), 90 deletions(-)
+ 141 files changed, 76157 insertions(+), 91 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -175,6 +171,9 @@ Includes the 2026-11-08/09 fixes:
  create mode 100644 addonapp/res/values/strings.xml
  create mode 100644 addonapp/src/org/los/tv/addon/DownloadService.java
  create mode 100644 addonapp/src/org/los/tv/addon/MainActivity.java
+ create mode 100644 audio_sender/Android.bp
+ create mode 100644 audio_sender/audio_sender.cpp
+ create mode 100644 audio_sender/audio_sender.rc
  rename bootctrl/{Android.bp.bak => Android.bp} (100%)
  create mode 100644 bt_hotplug/bt_hotplug.rc
  create mode 100644 bt_hotplug/bt_hotplug.sh
@@ -258,9 +257,12 @@ Includes the 2026-11-08/09 fixes:
  create mode 100644 recovery/root/system/lib/modules/rndis_host.ko
  rename scripts/{Android.bp.bak => Android.bp} (63%)
  create mode 100644 scripts/los-tv-boot-mode.sh
+ create mode 100644 sepolicy/plat_private/audio_sender.te
  create mode 100644 sepolicy/plat_private/los-tv-init.te
  create mode 100644 sepolicy/plat_private/los-tv-kmsglog.te
  create mode 100644 sepolicy/plat_private/los-tv.te
+ create mode 100644 sepolicy/plat_private/property.te
+ create mode 100644 sepolicy/plat_private/property_contexts
  create mode 100644 sepolicy/plat_private/ueventd.te
  create mode 100644 sepolicy/plat_private/vold.te
  create mode 100644 sepolicy/vendor/hal_audio.te
@@ -494,10 +496,10 @@ index 0000000..01e2e5e
 +L|youtube_apkmirror|YouTube TV — APKMirror|https://www.apkmirror.com/apk/google-inc/youtube-for-android-tv-android-tv/|||Нужен bundle для arm64-v8a (файл .apkm)
 diff --git a/addon/los-tv-addon-boot.sh b/addon/los-tv-addon-boot.sh
 new file mode 100644
-index 0000000..d9c3593
+index 0000000..81bcccf
 --- /dev/null
 +++ b/addon/los-tv-addon-boot.sh
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,304 @@
 +#!/system/bin/sh
 +#
 +# los-tv: драйвер установки проприетарных компонентов из recovery.
@@ -647,6 +649,7 @@ index 0000000..d9c3593
 +    mkdir -p "$WORK/apks" || die "не удалось создать $WORK/apks"
 +    [ -n "$PLAYAPK" ] && ln -sf "$PLAYAPK" "$WORK/apks/$(basename "$PLAYAPK")"
 +    [ -n "$YTAPK" ] && ln -sf "$YTAPK" "$WORK/apks/$(basename "$YTAPK")"
++    [ -n "$YTSPLIT" ] && ln -sf "$YTSPLIT" "$WORK/apks/YouTubeTV-split_config.arm64_v8a.apk"
 +    return 0
 +}
 +
@@ -699,11 +702,14 @@ index 0000000..d9c3593
 +[ -n "$GA" ] && log "google_apis (по содержимому): $GA"
 +PLAYAPK=$(find_first 'PlayStore-TV.apk' '*vending*.apk' '*PlayStore*.apk' || true)
 +YTAPK=$(find_first 'YouTube-TV.apk' '*youtube.tv*.apkm' '*youtube.tv*.apk' 'YouTube*.apk' || true)
++YTSPLIT=$(find_first 'YouTubeTV-split_config.arm64_v8a.apk' '*-split_config.arm64_v8a.apk' || true)
 +
 +[ -n "$CHROMEOS" ] && log "ChromeOS: $CHROMEOS"
 +[ -n "$GA" ] && log "google_apis: $GA"
 +[ -n "$PLAYAPK" ] && log "Play Store APK: $PLAYAPK"
 +[ -n "$YTAPK" ] && log "YouTube TV APK: $YTAPK"
++[ -n "$YTSPLIT" ] && log "YouTube TV split: $YTSPLIT"
++[ -z "$YTSPLIT" ] && log "ВНИМАНИЕ: YouTube TV split не найден"
 +[ -f "$PAYLOAD" ] && log "payload: $PAYLOAD"
 +
 +COMP=0
@@ -800,10 +806,10 @@ index 0000000..d9c3593
 +finish 0
 diff --git a/addon/los-tv-addon.sh b/addon/los-tv-addon.sh
 new file mode 100644
-index 0000000..07b7222
+index 0000000..0dafc4c
 --- /dev/null
 +++ b/addon/los-tv-addon.sh
-@@ -0,0 +1,717 @@
+@@ -0,0 +1,734 @@
 +#!/system/bin/sh
 +#
 +# los-tv: установка проприетарных компонентов (Widevine + NDK translation).
@@ -1289,9 +1295,26 @@ index 0000000..07b7222
 +        *)
 +            split="$src/YouTubeTV-split_config.arm64_v8a.apk"
 +            [ -f "$split" ] || split=
++            # Fallback: split мог не попасть в stage_apks (в recovery бывают
++            # сборки без симлинка). Ищем его рядом с исходным base APK.
++            if [ -z "$split" ]; then
++                for d in "$CDROM/data/media/0/los-tv-proprietary" \
++                         "$CDROM/los-tv-proprietary" \
++                         /data/los-tv-proprietary; do
++                    if [ -f "$d/YouTubeTV-split_config.arm64_v8a.apk" ]; then
++                        split="$d/YouTubeTV-split_config.arm64_v8a.apk"
++                        break
++                    fi
++                done
++            fi
 +            ;;
 +    esac
 +    [ -f "$apk" ] || die "не найден base APK YouTube TV"
++    if [ -n "$split" ]; then
++        log "YouTube TV split: $(basename "$split")"
++    else
++        log "ВНИМАНИЕ: split_config.arm64_v8a.apk не найден — preinstall упрётся в MISSING_SPLIT"
++    fi
 +
 +    mkdir -p "$sys/etc/preinstall"
 +    cp "$apk" "$sys/etc/preinstall/YouTubeTV.apk" || die "cp YouTube TV"
@@ -14062,6 +14085,509 @@ index 0000000..a968a02
 +        }
 +    }
 +}
+diff --git a/audio_sender/Android.bp b/audio_sender/Android.bp
+new file mode 100644
+index 0000000..941b13f
+--- /dev/null
++++ b/audio_sender/Android.bp
+@@ -0,0 +1,33 @@
++package {
++    default_applicable_licenses: ["Android-Apache-2.0"],
++}
++
++cc_binary {
++    name: "audio-rtp-sender",
++    srcs: ["audio_sender.cpp"],
++    shared_libs: [
++        "framework-permission-aidl-cpp",
++        "libaudioclient",
++        "libbase",
++        "libbinder",
++        "liblog",
++        "libutils",
++    ],
++    header_libs: [
++        "libmedia_headers",
++        "libmediametrics_headers",
++    ],
++    cpp_std: "c++20",
++    cflags: [
++        "-Wall",
++        "-Werror",
++        "-Wno-unused-parameter",
++    ],
++}
++
++prebuilt_etc {
++    name: "audio-rtp-sender-rc",
++    src: "audio_sender.rc",
++    filename: "audio_sender.rc",
++    sub_dir: "init",
++}
+diff --git a/audio_sender/audio_sender.cpp b/audio_sender/audio_sender.cpp
+new file mode 100644
+index 0000000..ba0bd2b
+--- /dev/null
++++ b/audio_sender/audio_sender.cpp
+@@ -0,0 +1,435 @@
++/*
++ * audio-rtp-sender — capture the Android playback mix (REMOTE_SUBMIX) and
++ * stream it as RTP L16/48000/stereo to the audiohub receiver.
++ *
++ * This is intentionally a small native daemon: it has no UI, starts from
++ * init, and restarts automatically if audioflinger/audioserver goes away.
++ *
++ * RTP payload is big-endian signed 16-bit PCM (RFC 3551 L16), mono/stereo
++ * determined by the negotiated receiver (we always send stereo).
++ */
++
++#include <arpa/inet.h>
++#include <errno.h>
++#include <getopt.h>
++#include <inttypes.h>
++#include <math.h>
++#include <netinet/in.h>
++#include <signal.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <time.h>
++#include <unistd.h>
++
++#include <atomic>
++#include <string>
++
++#include <android-base/properties.h>
++#include <android/content/AttributionSourceState.h>
++#include <binder/Binder.h>
++#include <log/log.h>
++#include <media/AudioRecord.h>
++#include <system/audio.h>
++
++using android::AudioRecord;
++using android::BBinder;
++using android::content::AttributionSourceState;
++using android::sp;
++using android::status_t;
++
++namespace {
++
++constexpr uint32_t kSampleRate = 48000;
++constexpr uint32_t kChannels = 2;
++constexpr uint32_t kBytesPerSample = 2;
++constexpr uint32_t kFrameBytes = kChannels * kBytesPerSample;
++constexpr uint8_t kPayloadType = 10;  // RTP static PT 10: L16 stereo
++constexpr uint32_t kDefaultSsrc = 0x4c4f5354;  // "LOST"
++constexpr size_t kMaxPacketFrames = 480;        // 10 ms upper bound
++
++// Runtime control/status properties.  TvSettings writes kPropEnabled;
++// the daemon writes kPropState/kPropStats for the UI.
++constexpr char kPropEnabled[] = "persist.sys.audio_rtp.enabled";
++constexpr char kPropHost[] = "persist.sys.audio_rtp.host";
++constexpr char kPropPort[] = "persist.sys.audio_rtp.port";
++constexpr char kPropState[] = "sys.audio_rtp.state";
++constexpr char kPropStats[] = "sys.audio_rtp.stats";
++
++std::atomic<bool> g_stop{false};
++
++void handle_signal(int) {
++    g_stop.store(true);
++}
++
++struct Config {
++    std::string host = "192.168.5.150";
++    uint16_t port = 5004;
++    uint32_t ssrc = kDefaultSsrc;
++    uint32_t packet_ms = 5;
++    bool verbose = false;
++};
++
++void usage(const char* prog) {
++    fprintf(stderr,
++            "usage: %s [--host ADDR] [--port PORT] [--ssrc HEX] "
++            "[--packet-ms 5|10] [--verbose]\n",
++            prog);
++}
++
++bool parse_uint(const char* text, unsigned long max, unsigned long* out) {
++    if (text == nullptr || *text == '\0') return false;
++    char* end = nullptr;
++    errno = 0;
++    unsigned long value = strtoul(text, &end, 0);
++    if (errno != 0 || end == text || *end != '\0' || value > max) return false;
++    *out = value;
++    return true;
++}
++
++bool parse_args(int argc, char** argv, Config* cfg) {
++    static const option kOptions[] = {
++            {"host", required_argument, nullptr, 'h'},
++            {"port", required_argument, nullptr, 'p'},
++            {"ssrc", required_argument, nullptr, 's'},
++            {"packet-ms", required_argument, nullptr, 'm'},
++            {"verbose", no_argument, nullptr, 'v'},
++            {"help", no_argument, nullptr, '?'},
++            {nullptr, 0, nullptr, 0},
++    };
++
++    int c;
++    while ((c = getopt_long(argc, argv, "h:p:s:m:v?", kOptions, nullptr)) != -1) {
++        unsigned long value = 0;
++        switch (c) {
++            case 'h':
++                cfg->host = optarg;
++                break;
++            case 'p':
++                if (!parse_uint(optarg, 65535, &value)) {
++                    fprintf(stderr, "invalid port: %s\n", optarg);
++                    return false;
++                }
++                cfg->port = static_cast<uint16_t>(value);
++                break;
++            case 's':
++                if (!parse_uint(optarg, 0xffffffffUL, &value)) {
++                    fprintf(stderr, "invalid ssrc: %s\n", optarg);
++                    return false;
++                }
++                cfg->ssrc = static_cast<uint32_t>(value);
++                break;
++            case 'm':
++                if (!parse_uint(optarg, 10, &value) || (value != 5 && value != 10)) {
++                    fprintf(stderr, "packet-ms must be 5 or 10: %s\n", optarg);
++                    return false;
++                }
++                cfg->packet_ms = static_cast<uint32_t>(value);
++                break;
++            case 'v':
++                cfg->verbose = true;
++                break;
++            default:
++                usage(argv[0]);
++                return false;
++        }
++    }
++    return true;
++}
++
++inline uint16_t swap16(uint16_t value) {
++    return static_cast<uint16_t>((value << 8) | (value >> 8));
++}
++
++void put_u16(uint8_t* p, uint16_t value) {
++    const uint16_t net = htons(value);
++    memcpy(p, &net, sizeof(net));
++}
++
++void put_u32(uint8_t* p, uint32_t value) {
++    const uint32_t net = htonl(value);
++    memcpy(p, &net, sizeof(net));
++}
++
++double now_seconds() {
++    timespec ts{};
++    clock_gettime(CLOCK_MONOTONIC, &ts);
++    return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
++}
++
++bool capture_enabled() {
++    return android::base::GetBoolProperty(kPropEnabled, true);
++}
++
++bool is_valid_ipv4(const std::string& host) {
++    in_addr addr{};
++    return inet_pton(AF_INET, host.c_str(), &addr) == 1;
++}
++
++void apply_runtime_config(Config* cfg) {
++    if (cfg == nullptr) return;
++    const std::string host = android::base::GetProperty(kPropHost, cfg->host);
++    if (!host.empty() && is_valid_ipv4(host)) {
++        cfg->host = host;
++    }
++    const int port = android::base::GetIntProperty(kPropPort, static_cast<int>(cfg->port));
++    if (port > 0 && port <= 65535) {
++        cfg->port = static_cast<uint16_t>(port);
++    }
++}
++
++bool runtime_config_changed(const Config& cfg) {
++    const std::string host = android::base::GetProperty(kPropHost, cfg.host);
++    if (!host.empty() && is_valid_ipv4(host) && host != cfg.host) {
++        return true;
++    }
++    const int port = android::base::GetIntProperty(kPropPort, static_cast<int>(cfg.port));
++    if (port > 0 && port <= 65535 && static_cast<uint16_t>(port) != cfg.port) {
++        return true;
++    }
++    return false;
++}
++
++void set_state(const char* state) {
++    android::base::SetProperty(kPropState, state);
++}
++
++void set_stats(const char* stats) {
++    android::base::SetProperty(kPropStats, stats);
++}
++
++int open_socket(const Config& cfg, sockaddr_in* destination) {
++    const int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
++    if (fd < 0) {
++        ALOGE("socket(AF_INET, SOCK_DGRAM) failed: %s", strerror(errno));
++        return -1;
++    }
++
++    int sndbuf = 1 << 20;
++    (void)setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
++
++    memset(destination, 0, sizeof(*destination));
++    destination->sin_family = AF_INET;
++    destination->sin_port = htons(cfg.port);
++    if (inet_pton(AF_INET, cfg.host.c_str(), &destination->sin_addr) != 1) {
++        ALOGE("invalid IPv4 address: %s", cfg.host.c_str());
++        close(fd);
++        return -1;
++    }
++    return fd;
++}
++
++sp<AudioRecord> create_record(const Config& cfg) {
++    size_t min_frames = 0;
++    status_t status = AudioRecord::getMinFrameCount(
++            &min_frames, kSampleRate, AUDIO_FORMAT_PCM_16_BIT, AUDIO_CHANNEL_IN_STEREO);
++    if (status != android::NO_ERROR) {
++        ALOGE("AudioRecord::getMinFrameCount failed: %d", status);
++        return nullptr;
++    }
++
++    const size_t packet_frames = kSampleRate * cfg.packet_ms / 1000;
++    size_t frame_count = packet_frames * 4;  // ~20 ms at 5 ms packets
++    if (frame_count < min_frames) frame_count = min_frames;
++
++    AttributionSourceState attribution;
++    attribution.packageName = std::string("com.android.audio.rtp_sender");
++    attribution.uid = static_cast<int32_t>(getuid());
++    attribution.pid = static_cast<int32_t>(getpid());
++    attribution.token = sp<BBinder>::make();
++
++    sp<AudioRecord> record = new AudioRecord(
++            AUDIO_SOURCE_REMOTE_SUBMIX,
++            kSampleRate,
++            AUDIO_FORMAT_PCM_16_BIT,
++            AUDIO_CHANNEL_IN_STEREO,
++            attribution,
++            frame_count,
++            nullptr,  // callback
++            0,        // notificationFrames
++            AUDIO_SESSION_ALLOCATE,
++            AudioRecord::TRANSFER_DEFAULT,
++            AUDIO_INPUT_FLAG_NONE,
++            nullptr,  // attributes
++            AUDIO_PORT_HANDLE_NONE);
++
++    status = record->initCheck();
++    if (status != android::NO_ERROR) {
++        ALOGE("AudioRecord initCheck failed: %d", status);
++        return nullptr;
++    }
++    record->setCallerName("audio-rtp-sender");
++    ALOGI("capture ready: %u Hz, %u ch, buffer %zu frames (min %zu)",
++          kSampleRate, kChannels, record->frameCount(), min_frames);
++    return record;
++}
++
++bool run_sender(const Config& cfg) {
++    sockaddr_in destination{};
++    const int fd = open_socket(cfg, &destination);
++    if (fd < 0) return false;
++
++    sp<AudioRecord> record = create_record(cfg);
++    if (record == nullptr) {
++        close(fd);
++        return false;
++    }
++
++    status_t status = record->start();
++    if (status != android::NO_ERROR) {
++        ALOGE("AudioRecord::start failed: %d", status);
++        close(fd);
++        return false;
++    }
++
++    const size_t packet_frames = kSampleRate * cfg.packet_ms / 1000;
++    const size_t packet_bytes = packet_frames * kFrameBytes;
++    uint8_t packet[12 + kMaxPacketFrames * kFrameBytes];
++    uint8_t pcm[kMaxPacketFrames * kFrameBytes];
++    memset(packet, 0, sizeof(packet));
++
++    uint16_t sequence = static_cast<uint16_t>(now_seconds() * 1000.0);
++    uint32_t timestamp = static_cast<uint32_t>(now_seconds() * kSampleRate);
++    bool first_packet = true;
++
++    uint64_t packets = 0;
++    uint64_t frames = 0;
++    uint64_t sent_bytes = 0;
++    uint64_t send_errors = 0;
++    double sum_squares = 0.0;
++    double last_stats = now_seconds();
++
++    ALOGI("sending RTP L16 to %s:%u (ssrc=%08x, %u ms/packet)",
++          cfg.host.c_str(), cfg.port, cfg.ssrc, cfg.packet_ms);
++    set_state("on");
++
++    bool ok = true;
++    while (!g_stop.load() && capture_enabled() && !runtime_config_changed(cfg)) {
++        size_t filled = 0;
++        while (filled < packet_bytes && !g_stop.load() && capture_enabled()) {
++            const ssize_t n = record->read(pcm + filled, packet_bytes - filled, true);
++            if (n < 0) {
++                if (n == -EINTR && g_stop.load()) break;
++                ALOGE("AudioRecord::read failed: %zd", n);
++                ok = false;
++                break;
++            }
++            if (n == 0) continue;
++            size_t bytes = static_cast<size_t>(n);
++            if (bytes % kFrameBytes != 0) {
++                ALOGW("AudioRecord::read returned %zu bytes, not frame aligned", bytes);
++                bytes -= bytes % kFrameBytes;
++            }
++            filled += bytes;
++        }
++        if (!ok) break;
++        if (filled < packet_bytes) continue;
++
++        // RTP fixed header.
++        packet[0] = 0x80;  // V=2, P=0, X=0, CC=0
++        packet[1] = static_cast<uint8_t>((first_packet ? 0x80 : 0x00) | kPayloadType);
++        put_u16(packet + 2, sequence++);
++        put_u32(packet + 4, timestamp);
++        put_u32(packet + 8, cfg.ssrc);
++        first_packet = false;
++
++        // Android PCM is little-endian; RTP L16 is network byte order.
++        const uint16_t* src = reinterpret_cast<const uint16_t*>(pcm);
++        uint16_t* dst = reinterpret_cast<uint16_t*>(packet + 12);
++        const size_t samples = packet_frames * kChannels;
++        for (size_t i = 0; i < samples; ++i) {
++            const uint16_t sample = src[i];
++            dst[i] = swap16(sample);
++            const int32_t s = static_cast<int16_t>(sample);
++            sum_squares += static_cast<double>(s) * s;
++        }
++        timestamp += packet_frames;
++
++        const ssize_t sent = sendto(fd, packet, 12 + packet_bytes, 0,
++                                    reinterpret_cast<const sockaddr*>(&destination),
++                                    sizeof(destination));
++        if (sent < 0) {
++            if (errno == EINTR && g_stop.load()) break;
++            if (send_errors++ % 100 == 0) {
++                ALOGW("sendto(%s:%u) failed: %s (total %" PRIu64 ")",
++                      cfg.host.c_str(), cfg.port, strerror(errno), send_errors);
++            }
++        } else {
++            packets++;
++            frames += packet_frames;
++            sent_bytes += static_cast<uint64_t>(sent);
++        }
++
++        const double now = now_seconds();
++        if (now - last_stats >= 5.0) {
++            const double elapsed = now - last_stats;
++            const double pps = packets / elapsed;
++            // RTP datagrams plus an estimate of the UDP/IP headers.  Ethernet
++            // framing is not included (about +3% on the wire).
++            const double kbps = (sent_bytes + 28.0 * packets) * 8.0 / elapsed / 1000.0;
++            const double rms = frames > 0
++                    ? sqrt(sum_squares / static_cast<double>(frames * kChannels))
++                    : 0.0;
++            ALOGI("stats: %" PRIu64 " packets, %.1f pps, %.0f kbps, rms=%.1f, errors=%" PRIu64,
++                  packets, pps, kbps, rms, send_errors);
++            char stats[96];
++            snprintf(stats, sizeof(stats), "%.0fpps %.0fkbps rms=%.0f err=%" PRIu64,
++                     pps, kbps, rms, send_errors);
++            set_stats(stats);
++            packets = 0;
++            frames = 0;
++            sent_bytes = 0;
++            sum_squares = 0.0;
++            send_errors = 0;
++            last_stats = now;
++        }
++    }
++
++    record->stop();
++    record->stopAndJoinCallbacks();
++    record.clear();
++    close(fd);
++    ALOGI("stopped");
++    return ok;
++}
++
++}  // namespace
++
++int main(int argc, char** argv) {
++    Config cfg;
++    if (!parse_args(argc, argv, &cfg)) {
++        usage(argv[0]);
++        return 2;
++    }
++
++    struct sigaction action {};
++    action.sa_handler = handle_signal;
++    sigemptyset(&action.sa_mask);
++    action.sa_flags = 0;
++    sigaction(SIGINT, &action, nullptr);
++    sigaction(SIGTERM, &action, nullptr);
++
++    ALOGI("starting audio-rtp-sender (uid=%u)", getuid());
++    set_state("starting");
++    while (!g_stop.load()) {
++        if (!capture_enabled()) {
++            set_state("off");
++            usleep(250000);
++            continue;
++        }
++        set_state("starting");
++        Config session_cfg = cfg;
++        apply_runtime_config(&session_cfg);
++        if (!run_sender(session_cfg)) {
++            set_state("error");
++            if (!g_stop.load()) sleep(1);
++        } else {
++            set_state("off");
++        }
++    }
++    set_state("off");
++    ALOGI("stopped");
++    return 0;
++}
+diff --git a/audio_sender/audio_sender.rc b/audio_sender/audio_sender.rc
+new file mode 100644
+index 0000000..391a2d3
+--- /dev/null
++++ b/audio_sender/audio_sender.rc
+@@ -0,0 +1,17 @@
++# los-tv: native playback capture -> RTP L16 -> audiohub (192.168.5.150:5004).
++# Runs as uid media: platform.xml grants that uid CAPTURE_AUDIO_OUTPUT, and
++# audioserver treats it as a media-server uid for recording policy.
++service audio-rtp-sender /system/bin/audio-rtp-sender --host 192.168.5.150 --port 5004
++    class core
++    user media
++    group audio inet
++    seclabel u:r:audio_sender:s0
++    disabled
++
++# Stock mediametrics is not started on this ROM; libmedia waits 5 s for
++# media.metrics twice per new audio process.  Starting it removes that delay.
++on boot
++    start mediametrics
++
++on property:sys.boot_completed=1
++    start audio-rtp-sender
 diff --git a/bootctrl/Android.bp.bak b/bootctrl/Android.bp
 similarity index 100%
 rename from bootctrl/Android.bp.bak
@@ -14085,10 +14611,10 @@ index 0000000..ffa6375
 +    exec_background u:r:su:s0 root root -- /system/bin/sh /system/bin/bt_hotplug.sh
 diff --git a/bt_hotplug/bt_hotplug.sh b/bt_hotplug/bt_hotplug.sh
 new file mode 100644
-index 0000000..4593594
+index 0000000..bb2a1a3
 --- /dev/null
 +++ b/bt_hotplug/bt_hotplug.sh
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,118 @@
 +#!/system/bin/sh
 +# los-tv: recover Bluetooth after the USB HCI adapter is re-enumerated.
 +#
@@ -14144,10 +14670,6 @@ index 0000000..4593594
 +        _i=$((_i + 1))
 +    done
 +    /system/bin/sleep 2
-+    if ! bt_wanted; then
-+        log "Bluetooth turned off during restart; not enabling"
-+        return
-+    fi
 +    /system/bin/timeout 20 /system/bin/cmd bluetooth_manager enable >/dev/null 2>&1
 +    _i=0
 +    while ! bt_enabled && [ "$_i" -lt 20 ]; do
@@ -14212,7 +14734,7 @@ index 0000000..4593594
 +    log "new baseline:${_base:-<none>}"
 +done
 diff --git a/device.mk b/device.mk
-index 682a708..97af14d 100644
+index 682a708..2e1823f 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14246,6 +14768,15 @@ index 682a708..97af14d 100644
  # Update engine
  PRODUCT_PACKAGES += \
      update_engine \
+@@ -55,7 +45,7 @@ PRODUCT_PACKAGES_DEBUG += \
+ PRODUCT_PROPERTY_OVERRIDES := \
+     ro.lmk.kill_timeout_ms=100 \
+     ro.arch=x86 \
+-    persist.rtc_local_time=1 \
++    persist.rtc_local_time=0 \
+     dalvik.vm.useautofastjni=true \
+     ro.surface_flinger.max_frame_buffer_acquired_buffers=3 \
+     audio.safemedia.bypass=true \
 @@ -85,12 +75,16 @@ PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/ppp/ip-up:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-up \
      $(LOCAL_PATH)/ppp/ip-down:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-down \
@@ -14314,7 +14845,7 @@ index 682a708..97af14d 100644
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
-@@ -285,10 +282,125 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+@@ -285,10 +282,130 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
  
  $(call inherit-product-if-exists, hardware/x86power/x86power.mk)
  
@@ -14338,6 +14869,11 @@ index 682a708..97af14d 100644
 +PRODUCT_PACKAGES += \
 +    libcodec2_soft_avcdec \
 +    libcodec2_soft_hevcdec
++
++# los-tv: native playback capture -> RTP L16 -> audiohub.
++PRODUCT_PACKAGES += \
++    audio-rtp-sender \
++    audio-rtp-sender-rc
 +
 +# 2026-10-11: HIDL DRM (android.hardware.drm@1.0-service) УДАЛЁН.
 +# Причина: не может получить passthrough от AIDL-версии, падает с
@@ -83897,7 +84433,7 @@ index d150e2f..8f7f988 100644
      ifup ${vendor.recovery.ethernet.dhcp.iface:-eth0}
      start dhcpclient
 diff --git a/init.sh b/init.sh
-index 85013d1..f02b10e 100644
+index 85013d1..6003b01 100644
 --- a/init.sh
 +++ b/init.sh
 @@ -418,6 +418,7 @@ function init_hal_gralloc()
@@ -84034,23 +84570,27 @@ index 85013d1..f02b10e 100644
  			;;
  		X80*Power)
  			export POWER_NONBOOT_CPU_OFF=${POWER_NONBOOT_CPU_OFF:-1}
-@@ -966,6 +1025,15 @@ function do_bootcomplete()
+@@ -966,6 +1025,19 @@ function do_bootcomplete()
  	# initialize audio in bootcomplete
  	init_hal_audio_bootcomplete
  
 +	# los-tv: media services race with servicemanager at boot.  mediaserver
 +	# registers media.player/media.resource_manager (ExoPlayer blocks without
-+	# them), mediaextractor is needed by MediaExtractor, and the c2-ffmpeg
-+	# service must re-register after servicemanager is up.
++	# them), mediaextractor is needed by framework MediaPlayer (e.g. the
++	# Kinopoisk splash screen), and the c2-ffmpeg service must re-register
++	# after servicemanager is up.
 +	start media
++	# Restart, not stop: at this point the boot-time instance may have raced
++	# servicemanager, and without media.extractor MediaPlayer.create() fails.
 +	stop mediaextractor
++	start mediaextractor
 +	stop android-hardware-media-c2-hal
 +	start android-hardware-media-c2-hal
 +
  	# Turn off TSCalibration if property isn't set
  	if [ "$(getprop ro.tscal.enable)" == "true" ]; then
  		pm enable org.zeroxlab.util.tscal
-@@ -1115,6 +1183,12 @@ case "$1" in
+@@ -1115,6 +1187,12 @@ case "$1" in
  	kmsg)
  		dmesg -w > /data/kmsg.txt
  		;;
@@ -86003,10 +86543,10 @@ index 0000000..5fc44f4
 +</permissions>
 diff --git a/prebuilt/Android.bp b/prebuilt/Android.bp
 new file mode 100644
-index 0000000..3d986f9
+index 0000000..8be265e
 --- /dev/null
 +++ b/prebuilt/Android.bp
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,241 @@
 +// Предустановленные сторонние приложения для ТВ-бокса Mi TV Stick.
 +// Добавлены 2026-10-11.
 +//
@@ -86134,9 +86674,13 @@ index 0000000..3d986f9
 +}
 +
 +// init .rc -> /system/etc/init/
++// ⚠️ filename обязателен: без него prebuilt_etc ставит файл под именем
++// модуля (preinstall-apps-rc), init не видит .rc и НЕ регистрирует
++// on-property из файла — preinstall молча не запускается после перепрошивки.
 +prebuilt_etc {
 +    name: "preinstall-apps-rc",
 +    src: "preinstall-apps.rc",
++    filename: "preinstall-apps.rc",
 +    sub_dir: "init",
 +}
 +
@@ -86151,6 +86695,7 @@ index 0000000..3d986f9
 +prebuilt_etc {
 +    name: "checkin-enabler-rc",
 +    src: "checkin-enabler.rc",
++    filename: "checkin-enabler.rc",
 +    sub_dir: "init",
 +}
 +
@@ -86164,6 +86709,7 @@ index 0000000..3d986f9
 +prebuilt_etc {
 +    name: "play-store-fixups-rc",
 +    src: "play-store-fixups.rc",
++    filename: "play-store-fixups.rc",
 +    sub_dir: "init",
 +}
 +
@@ -86178,6 +86724,7 @@ index 0000000..3d986f9
 +prebuilt_etc {
 +    name: "display-fixups-rc",
 +    src: "display-fixups.rc",
++    filename: "display-fixups.rc",
 +    sub_dir: "init",
 +}
 +
@@ -86192,6 +86739,7 @@ index 0000000..3d986f9
 +prebuilt_etc {
 +    name: "tvres-notify-rc",
 +    src: "tvres-notify.rc",
++    filename: "tvres-notify.rc",
 +    sub_dir: "init",
 +}
 +
@@ -86394,22 +86942,18 @@ index 0000000..455394f
 +setprop sys.powerctl reboot
 diff --git a/prebuilt/checkin-enabler.rc b/prebuilt/checkin-enabler.rc
 new file mode 100644
-index 0000000..ee3dc8a
+index 0000000..72952ff
 --- /dev/null
 +++ b/prebuilt/checkin-enabler.rc
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,8 @@
 +# Включение check-in microG при первой загрузке (apply-step24.py).
-+# Один раз: пока нет /data/misc/checkin-enabler.done. Под user root —
++# Один раз: пока нет /data/misc/checkin-enabler.done. Под root —
 +# content требует root (signature-permission WRITE_SETTINGS).
++#
++# exec вместо service: init этой сборки не регистрирует on-property из
++# service-файла; seclabel обязателен для запуска /system/bin/sh под Enforcing.
 +on property:sys.boot_completed=1
-+    start checkin-enabler
-+
-+service checkin-enabler /system/bin/sh /system/bin/checkin-enabler.sh
-+    oneshot
-+    disabled
-+    user root
-+    group root
-+    class core
++    exec u:r:su:s0 root root -- /system/bin/sh /system/bin/checkin-enabler.sh
 diff --git a/prebuilt/checkin-enabler.sh b/prebuilt/checkin-enabler.sh
 new file mode 100644
 index 0000000..0cd8778
@@ -86448,22 +86992,19 @@ index 0000000..0cd8778
 +exit 0
 diff --git a/prebuilt/display-fixups.rc b/prebuilt/display-fixups.rc
 new file mode 100755
-index 0000000..5085fd8
+index 0000000..02d9f95
 --- /dev/null
 +++ b/prebuilt/display-fixups.rc
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,9 @@
 +# Android TV: стандартный ТВ-режим кадра (apply-step28.py).
 +# Без него Google-приложения выбирают упрощённую вёрстку боковых панелей:
 +# подпись пункта уезжает под иконку, «таблетка» фокуса охватывает только иконку.
++#
++# exec_background вместо service: init этой сборки не регистрирует on-property
++# из service-файла; seclabel обязателен для запуска /system/bin/sh под
++# Enforcing. Фон — потому что скрипт вызывает wm/cmd display и может ждать.
 +on property:sys.boot_completed=1
-+    start display-fixups
-+
-+service display-fixups /system/bin/sh /system/bin/display-fixups.sh
-+    oneshot
-+    disabled
-+    user root
-+    group root
-+    class core
++    exec_background u:r:su:s0 root root -- /system/bin/sh /system/bin/display-fixups.sh
 diff --git a/prebuilt/display-fixups.sh b/prebuilt/display-fixups.sh
 new file mode 100755
 index 0000000..11f76fb
@@ -86736,22 +87277,18 @@ index 0000000..bec92a6
 +    exec u:r:su:s0 shell shell -- /system/bin/sh /system/bin/los-tv-addon-notify.sh
 diff --git a/prebuilt/play-store-fixups.rc b/prebuilt/play-store-fixups.rc
 new file mode 100755
-index 0000000..07eefc3
+index 0000000..c19b435
 --- /dev/null
 +++ b/prebuilt/play-store-fixups.rc
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,8 @@
 +# Play Store: выдать appop ACTIVATE_VPN при каждой загрузке (apply-step27.py).
 +# Без него DownloadService (FGS типа systemExempted) падает, и установка
 +# приложений из магазина зависает на «Подождите…» — подробности в скрипте.
++#
++# exec вместо service: init этой сборки не регистрирует on-property из
++# service-файла; seclabel обязателен для запуска /system/bin/sh под Enforcing.
 +on property:sys.boot_completed=1
-+    start play-store-fixups
-+
-+service play-store-fixups /system/bin/sh /system/bin/play-store-fixups.sh
-+    oneshot
-+    disabled
-+    user root
-+    group root
-+    class core
++    exec u:r:su:s0 root root -- /system/bin/sh /system/bin/play-store-fixups.sh
 diff --git a/prebuilt/play-store-fixups.sh b/prebuilt/play-store-fixups.sh
 new file mode 100755
 index 0000000..1e57162
@@ -86797,22 +87334,22 @@ index 0000000..1e57162
 +exit "$rc"
 diff --git a/prebuilt/preinstall-apps.rc b/prebuilt/preinstall-apps.rc
 new file mode 100644
-index 0000000..8292bcc
+index 0000000..c672ec0
 --- /dev/null
 +++ b/prebuilt/preinstall-apps.rc
 @@ -0,0 +1,12 @@
 +# Предустановка приложений в /data при первом старте (2026-10-13).
 +# Ждём sys.boot_completed: package-менеджер готов, /data расшифрован.
++#
++# ВАЖНО: service-блок здесь не используется. В этой сборке init регистрирует
++# service из файла, но НЕ регистрирует on-property (проверено 2026-11-10:
++# `pm path` ghost, preinstall так и не запускался, /data/misc/preinstall-apps
++# не обновлялся). Запускаем напрямую через exec_background.
++# seclabel обязателен: без него exec остаётся в u:r:init:s0 и не может
++# запустить /system/bin/sh (shell_exec). exec_background, а не exec, потому
++# что скрипт ждёт package manager до 2 минут и не должен блокировать init.
 +on property:sys.boot_completed=1
-+    start preinstall-apps
-+
-+service preinstall-apps /system/bin/sh /system/bin/preinstall-apps.sh
-+    oneshot
-+    disabled
-+    user system
-+    group system
-+    class core
-+    ioprio rt 5
++    exec_background u:r:su:s0 root root -- /system/bin/sh /system/bin/preinstall-apps.sh
 diff --git a/prebuilt/privapp-permissions-com.android.vending.xml b/prebuilt/privapp-permissions-com.android.vending.xml
 new file mode 100644
 index 0000000..e93ac83
@@ -86898,23 +87435,19 @@ index 0000000..e93ac83
 +</permissions>
 diff --git a/prebuilt/tvres-notify.rc b/prebuilt/tvres-notify.rc
 new file mode 100644
-index 0000000..202bdb7
+index 0000000..9cd9521
 --- /dev/null
 +++ b/prebuilt/tvres-notify.rc
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,9 @@
 +# Android TV: уведомление в шторке, если телевизор не принял физический режим
 +# (apply-step33). Сервис обязательно от uid shell: «cmd notification post» из-под
 +# root уведомление не создаёт (пакет выводится из uid), а TV-панель показывает
 +# только уведомления с TvExtender (флаг -T, apply-step32).
++#
++# exec вместо service: init этой сборки не регистрирует on-property из
++# service-файла. Домен su + uid/gid shell — как в los-tv-addon-state.rc.
 +on property:sys.los_tv.phys_fail=*
-+    start tvres-notify
-+
-+service tvres-notify /system/bin/sh /system/bin/tvres-notify.sh
-+    oneshot
-+    disabled
-+    user shell
-+    group shell
-+    class core
++    exec u:r:su:s0 shell shell -- /system/bin/sh /system/bin/tvres-notify.sh
 diff --git a/prebuilt/tvres-notify.sh b/prebuilt/tvres-notify.sh
 new file mode 100755
 index 0000000..a41cc12
@@ -86957,10 +87490,10 @@ index 0000000..a41cc12
 +exit 0
 diff --git a/prebuilt/user/preinstall-apps.sh b/prebuilt/user/preinstall-apps.sh
 new file mode 100644
-index 0000000..d7cfa9a
+index 0000000..93c2941
 --- /dev/null
 +++ b/prebuilt/user/preinstall-apps.sh
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,177 @@
 +#!/system/bin/sh
 +# Предустановка приложений в /data (2026-10-13; состав — 2026-10-29)
 +#
@@ -86980,31 +87513,42 @@ index 0000000..d7cfa9a
 +
 +# install_app <имя-флага> <package> <apk> [split.apk ...]
 +#
-+# Все имена — файлы в /system/etc/preinstall. Base и сплиты ставятся одним
-+# вызовом: у YouTube/Wink/Кинопоиска в манифесте есть requiredSplitTypes
++# Имена без ведущего / — файлы в /system/etc/preinstall; абсолютные пути
++# допустимы (нужно для сплита YouTube с /data/media/0). Base и сплиты ставятся
++# одним вызовом: у YouTube/Wink/Кинопоиска в манифесте есть requiredSplitTypes
 +# (base__abi/base__density), поэтому одиночный base.apk даёт
 +# INSTALL_FAILED_MISSING_SPLIT.
 +#
-+# Android 16: pm install-multiple/install-session-create удалены; список
-+# файлов передаётся обычному `pm install`.
++# Android 16: pm install-multiple/install-session-create удалены; multi-APK
++# ставится через install-create/install-write/install-commit.
 +install_app() {
 +    name=$1
 +    pkg=$2
 +    shift 2
 +
-+    # Флаг: уже ставили этим скриптом
-+    [ -f "$FLAGDIR/$name.done" ] && return
-+
-+    # Уже установлено (пользователем или прошлой установкой) — не трогаем
++    # Ghost-safe: сначала проверяем codePath. Если PM помнит пакет, но APK
++    # исчез (после reflash/смены слота), .done не должен блокировать установку.
 +    if pm path "$pkg" >/dev/null 2>&1; then
 +        touch "$FLAGDIR/$name.done" 2>/dev/null
 +        return
 +    fi
++    # Отличаем ghost после перепрошивки от осознанного удаления пользователем:
++    # при ghost каталог данных остаётся, при `pm uninstall` он удаляется.
++    # Иначе preinstall воскрешал бы удалённые Jellyfin/VLC/YouTube на каждом
++    # ребуте.
++    if [ ! -d "/data/user/0/$pkg" ] && [ -f "$FLAGDIR/$name.done" ]; then
++        log_preinstall "пропускаю $name: удалён пользователем (каталога данных нет)"
++        return
++    fi
++    rm -f "$FLAGDIR/$name.done" "$FLAGDIR/$name.failed" 2>/dev/null
 +
 +    APKS=""
 +    MISSING=""
 +    for f in "$@"; do
-+        p="$DIR/$f"
++        case "$f" in
++            /*) p="$f" ;;
++            *)  p="$DIR/$f" ;;
++        esac
 +        APKS="$APKS $p"
 +        [ -f "$p" ] || MISSING="$MISSING $p"
 +    done
@@ -87016,7 +87560,45 @@ index 0000000..d7cfa9a
 +    fi
 +
 +    log_preinstall "устанавливаю $name ($pkg): $*"
-+    if OUT=$(pm install -r -g $APKS 2>&1); then
++    # Android 16: `pm install base.apk split.apk` не передаёт split
++    # (INSTALL_FAILED_MISSING_SPLIT). Для multi-APK используем install-session.
++    if [ $# -eq 1 ]; then
++        case "$1" in
++            /*) p="$1" ;;
++            *)  p="$DIR/$1" ;;
++        esac
++        OUT=$(pm install -r -g "$p" 2>&1)
++        WRITE_FAIL=
++    else
++        SZ=0
++        for f in "$@"; do
++            case "$f" in
++                /*) p="$f" ;;
++                *)  p="$DIR/$f" ;;
++            esac
++            SZ=$((SZ + $(stat -c%s "$p")))
++        done
++        SESS=$(pm install-create -r -g -S "$SZ" "$pkg" 2>&1 | sed -n 's/.*\[\([0-9]*\)\].*/\1/p')
++        WRITE_FAIL=
++        if [ -z "$SESS" ]; then
++            OUT="install-create failed"
++        else
++            for f in "$@"; do
++                case "$f" in
++                    /*) p="$f" ;;
++                    *)  p="$DIR/$f" ;;
++                esac
++                pm install-write -S "$(stat -c%s "$p")" "$SESS" "$(basename "$p")" "$p" >/dev/null 2>&1 || WRITE_FAIL=$f
++            done
++            if [ -n "$WRITE_FAIL" ]; then
++                pm install-abandon "$SESS" >/dev/null 2>&1
++                OUT="install-write failed: $WRITE_FAIL"
++            else
++                OUT=$(pm install-commit "$SESS" 2>&1)
++            fi
++        fi
++    fi
++    if [ -z "$WRITE_FAIL" ] && ! echo "$OUT" | grep -qE "Failure|failed|error"; then
 +        log_preinstall "OK $name"
 +        touch "$FLAGDIR/$name.done" 2>/dev/null
 +    else
@@ -87057,6 +87639,36 @@ index 0000000..d7cfa9a
 +# и M3U-плейлисты — проверка сети и кодеков без проприетарных сервисов.
 +install_app VLC org.videolan.vlc \
 +    VLC-x86_64.apk
++
++# los-tv add-on: YouTube TV из пользовательского APK (arm64 идёт через
++# NDK translation). Блок живёт здесь, а не дописывается add-on'ом: так база
++# и add-on не расходятся, а после перепрошивки скрипт сам видит ghost-пакет
++# (`pm path` пуст) и ставит base+split заново. Сплит обязателен: в манифесте
++# YouTube есть requiredSplitTypes, одиночный base.apk даёт
++# INSTALL_FAILED_MISSING_SPLIT.
++if [ -f "$DIR/YouTubeTV.apk" ]; then
++    YTSPLIT="$DIR/YouTubeTV-split_config.arm64_v8a.apk"
++    if [ ! -f "$YTSPLIT" ]; then
++        # Старый add-on/recovery умел копировать только base. Не оставляем
++        # YouTube ghost'ом: сплит лежит рядом с пользовательскими APK на
++        # /data/media/0, откуда его можно поставить напрямую.
++        for d in /data/media/0/los-tv-proprietary \
++                 /data/media/0/Download \
++                 /data/local/tmp/los-tv-proprietary; do
++            if [ -f "$d/YouTubeTV-split_config.arm64_v8a.apk" ]; then
++                YTSPLIT="$d/YouTubeTV-split_config.arm64_v8a.apk"
++                break
++            fi
++        done
++    fi
++    if [ -f "$YTSPLIT" ]; then
++        install_app YouTubeTV com.google.android.youtube.tv \
++            YouTubeTV.apk "$YTSPLIT"
++    else
++        log_preinstall "ВНИМАНИЕ: YouTubeTV.apk без split_config.arm64_v8a.apk — установка, скорее всего, упрётся в MISSING_SPLIT"
++        install_app YouTubeTV com.google.android.youtube.tv YouTubeTV.apk
++    fi
++fi
 +
 +log_preinstall "готово; неудачных: $(ls $FLAGDIR/*.failed 2>/dev/null | wc -l)"
 diff --git a/recovery/root/system/lib/firmware/rtl_nic/rtl8105e-1.fw b/recovery/root/system/lib/firmware/rtl_nic/rtl8105e-1.fw
@@ -89469,11 +90081,68 @@ index fd113f9..06389af 100644
 +
 +# los-tv: чтение hwmon/name сенсоров (enforcing)
 +allow hal_thermal_intel sysfs:file r_file_perms;
+diff --git a/sepolicy/plat_private/audio_sender.te b/sepolicy/plat_private/audio_sender.te
+new file mode 100644
+index 0000000..0a517a5
+--- /dev/null
++++ b/sepolicy/plat_private/audio_sender.te
+@@ -0,0 +1,51 @@
++# los-tv: native playback capture (REMOTE_SUBMIX) -> RTP L16 -> audiohub.
++type audio_sender, domain, coredomain;
++type audio_sender_exec, exec_type, system_file_type, file_type;
++init_daemon_domain(audio_sender)
++
++# Talk to audioserver (audio flinger + audio policy) and the legacy
++# AudioManager service used for the permission barrier.
++binder_use(audio_sender)
++binder_call(audio_sender, audioserver)
++binder_call(audio_sender, system_server)   # IAudioManager (AudioService) + reply binder transfer
++binder_call(audioserver, audio_sender)     # AudioFlinger callbacks into the record client
++allow audio_sender audio_service:service_manager find;
++allow audio_sender audioserver_service:service_manager find;
++
++# MediaMetrics: libmedia tries to bind media.metrics on every new audio
++# process.  Allow it explicitly instead of eating the 5 s service timeout.
++allow audio_sender mediametrics_service:service_manager find;
++binder_call(audio_sender, mediametrics)
++
++# AudioRecord/audioflinger share cblk + PCM buffers as audioserver_tmpfs
++# memfds; the client mmaps them read/write.
++allow audio_sender audioserver_tmpfs:file { getattr map read write };
++
++# UDP RTP output.
++net_domain(audio_sender)
++allow audio_sender self:udp_socket create_socket_perms;
++allow audio_sender node:udp_socket sendto;
++allow audio_sender port_type:udp_socket name_bind;
++
++# Logcat diagnostics.
++write_logd(audio_sender)
++
++# Control/status properties: TvSettings (system_app) writes the user switch;
++# the daemon publishes its state and rolling stats for the UI.
++# set_prop/get_prop also grant the property socket and the required
++# property-file read/map permissions.
++set_prop(system_app, audio_rtp_enabled_prop)
++set_prop(system_app, audio_rtp_host_prop)
++set_prop(system_app, audio_rtp_port_prop)
++set_prop(audio_sender, audio_rtp_state_prop)
++set_prop(audio_sender, audio_rtp_stats_prop)
++get_prop(audio_sender, audio_rtp_enabled_prop)
++get_prop(audio_sender, audio_rtp_host_prop)
++get_prop(audio_sender, audio_rtp_port_prop)
++get_prop(system_app, audio_rtp_state_prop)
++get_prop(system_app, audio_rtp_stats_prop)
++get_prop(shell, audio_rtp_enabled_prop)
++get_prop(shell, audio_rtp_host_prop)
++get_prop(shell, audio_rtp_port_prop)
++get_prop(shell, audio_rtp_state_prop)
++get_prop(shell, audio_rtp_stats_prop)
 diff --git a/sepolicy/plat_private/file_contexts b/sepolicy/plat_private/file_contexts
-index bd8135f..9c20d4b 100644
+index bd8135f..e2ef1d6 100644
 --- a/sepolicy/plat_private/file_contexts
 +++ b/sepolicy/plat_private/file_contexts
-@@ -1,11 +1,42 @@
+@@ -1,11 +1,43 @@
  # surfaceflinger
  /dev/dri(/.*)?               u:object_r:gpu_device:s0
  /dev/tty0                    u:object_r:gpu_device:s0
@@ -89498,6 +90167,7 @@ index bd8135f..9c20d4b 100644
 +/(vendor|system/vendor)/lib(64)?/(hw/)?vulkan\.pastel\.so  u:object_r:same_process_hal_file:s0
 +/(vendor|system/vendor)/lib(64)?/hw/android\.hardware\.sensors@1\.0-impl\.so u:object_r:same_process_hal_file:s0
 +/system/bin/los-tv-kmsglog u:object_r:los_tv_kmsglog_exec:s0
++/system/bin/audio-rtp-sender u:object_r:audio_sender_exec:s0
 +/data/misc/los_tv_kmsg(/.*)? u:object_r:los_tv_kmsg_data_file:s0
 +/(vendor|system/vendor)/lib(64)?/libui\.so u:object_r:same_process_hal_file:s0
 +/(vendor|system/vendor)/lib(64)?/android\.hardware\.graphics\.allocator@.*\.so u:object_r:same_process_hal_file:s0
@@ -89724,6 +90394,31 @@ index 0000000..7278b1f
 +
 +# c2-ffmpeg reads persist.ffmpeg-codec2.pixel_format; init.sh sets it.
 +set_prop(init, vendor_ffmpeg_prop)
+diff --git a/sepolicy/plat_private/property.te b/sepolicy/plat_private/property.te
+new file mode 100644
+index 0000000..6a9f5cf
+--- /dev/null
++++ b/sepolicy/plat_private/property.te
+@@ -0,0 +1,8 @@
++# los-tv: control/status properties for the native audio RTP sender.
++# system_property_type is required: these properties belong to /system and
++# coredomain (system_app/audio_sender) is allowed to set them.
++type audio_rtp_enabled_prop, property_type, system_property_type;
++type audio_rtp_host_prop, property_type, system_property_type;
++type audio_rtp_port_prop, property_type, system_property_type;
++type audio_rtp_state_prop, property_type, system_property_type;
++type audio_rtp_stats_prop, property_type, system_property_type;
+diff --git a/sepolicy/plat_private/property_contexts b/sepolicy/plat_private/property_contexts
+new file mode 100644
+index 0000000..e0ba022
+--- /dev/null
++++ b/sepolicy/plat_private/property_contexts
+@@ -0,0 +1,5 @@
++persist.sys.audio_rtp.enabled u:object_r:audio_rtp_enabled_prop:s0 exact string
++persist.sys.audio_rtp.host    u:object_r:audio_rtp_host_prop:s0    exact string
++persist.sys.audio_rtp.port    u:object_r:audio_rtp_port_prop:s0    exact string
++sys.audio_rtp.state           u:object_r:audio_rtp_state_prop:s0   exact string
++sys.audio_rtp.stats           u:object_r:audio_rtp_stats_prop:s0   exact string
 diff --git a/sepolicy/plat_private/surfaceflinger.te b/sepolicy/plat_private/surfaceflinger.te
 index 8f936ca..f88ba8f 100644
 --- a/sepolicy/plat_private/surfaceflinger.te
