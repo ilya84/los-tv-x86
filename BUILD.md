@@ -59,7 +59,7 @@ Play Store в базовый образ не входит; его APK польз
 ## 4. Сборка ISO
 
 ```sh
-cd ~/android/los-tv-x86
+cd ~/android/los-tv-23     # на build-vm; имя каталога может быть своим
 source build/envsetup.sh
 lunch lineage_x86_64_tv trunk_staging userdebug
 m iso_img
@@ -69,10 +69,13 @@ m iso_img
 
 `scripts/run-iso-full.sh` — пример запуска в фоне с логом (пути поправьте).
 
-Замечание: `install.sfs` (Calamares) собирается отдельно и пачвается
+Замечание: `install.sfs` (Calamares) собирается отдельно и патчится
 оверлеем из `installer/` (`scripts/patch-install-sfs.sh`, режим
 `MODE=apply`). Перед `m iso_img` он должен лежать в
-`bootable/aaropa/iso/install.sfs`.
+`bootable/aaropa/iso/install.sfs`. На текущей build-vm он уже пропатчен
+(md5 `abe44dc7…`, маркер `install.sfs.patched`), поэтому стандартная
+команда работает без дополнительных шагов; после `m clean` восстановить
+симлинки `out/host/linux-x86/bin/meson` и `glslangValidator`.
 
 ## 5. Сборка OTA
 
@@ -83,7 +86,10 @@ bash scripts/make-ota.sh
 Скрипт собирает `target-files-package`, генерирует полный A/B OTA
 (`out/target/product/x86_64_tv/lineage_x86_64_tv-ota-full.zip`), проверяет
 размер initrd (16 МиБ) и печатает хэши. Установка — `adb reboot sideload` +
-`adb sideload zip`.
+`adb sideload zip`. Прямой `m otapackage` не использовать: он даёт
+`lineage_x86_64_tv-ota.zip` и упирается в отсутствие
+`META/dynamic_partitions_info.txt` у статических разделов; скрипт обходит
+это через `--extracted_input_target_files`.
 
 После OTA add-on восстанавливает компоненты автоматически: приложение
 `addon-autorestore` создаёт маркер, GRUB грузит recovery, установщик ставит
