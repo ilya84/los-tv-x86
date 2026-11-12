@@ -19,9 +19,12 @@
 - Актуализирован `BUILD.md`: чистый bootstrap, актуальные APK/URL, ISO
   `bass-lineout-*`, full OTA через `scripts/make-ota.sh`, опциональный
   сетевой OTA (`lineage.updater.uri`, HTTPS, Range).
+- `BUILD.md`: результат ISO — `lineage-23.2-*-x86_64_tv.iso` (историческое
+  имя; upstream `bass-lineout-*` убран).
 - Device tree `a4a40e2`: опциональный `LOS_TV_OTA_URI` →
   `lineage.updater.uri`; из `vendorsetup.sh` убран вызов несуществующего
-  `newinstaller-ng`; aaropa `bf552c0`: `aaropa.lock` закреплён на `20260905`.
+  `newinstaller-ng`; aaropa `c5107b0`: `aaropa.lock` закреплён на `20260905`,
+  ISO переименован в `lineage-*`.
 - Роли стендов: `intel` — production, `e3000n` — тестовый.
 
 ## 2026-11-10 — YouTube TV переживает перепрошивку (preinstall)

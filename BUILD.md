@@ -110,8 +110,9 @@ lunch lineage_x86_64_tv trunk_staging userdebug
 m iso_img
 ```
 
-Результат: `out/target/product/x86_64_tv/bass-lineout-23.2-*-x86_64_tv.iso`
-(ISO-инсталлятор с GRUB/Calamares).
+Результат: `out/target/product/x86_64_tv/lineage-23.2-*-x86_64_tv.iso`
+(ISO-инсталлятор с GRUB/Calamares; имя возвращено к историческому
+LineageOS-формату вместо upstream `bass-lineout-*`).
 
 `install.sfs` (Calamares) собирается отдельно и патчится оверлеем из
 `installer/` (`installer/patch-install-sfs.sh`, режим `MODE=apply`). Перед

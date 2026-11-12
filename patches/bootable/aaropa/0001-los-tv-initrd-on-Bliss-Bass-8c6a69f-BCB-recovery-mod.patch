@@ -1,12 +1,12 @@
-From bf552c0790b7a3c19bf426ece76b5174a1f338b9 Mon Sep 17 00:00:00 2001
+From c5107b08547ff9d3d4b0d1a5468ce381738562cc Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Thu, 12 Nov 2026 10:48:05 +1000
+Date: Thu, 12 Nov 2026 21:01:54 +1000
 Subject: [PATCH] los-tv: initrd on Bliss-Bass 8c6a69f: BCB recovery,
- /metadata, NIC firmware, pinned aaropa 20260905
+ /metadata, NIC firmware, pinned aaropa 20260905, lineage ISO name
 
 ---
  .github/workflows/cla.yml                     |  49 ++++++++++++
- Android.mk                                    |  26 +++++-
+ Android.mk                                    |  30 ++++++-
  aaropa.lock                                   |   4 +-
  initrd/init                                   |  74 ++++++++++++++++++
  initrd/usr/bin/insmod                         | Bin 0 -> 682696 bytes
@@ -102,7 +102,7 @@ Subject: [PATCH] los-tv: initrd on Bliss-Bass 8c6a69f: BCB recovery,
  .../usr/lib/modules/6.18.21-zenith+/r8152.ko  | Bin 0 -> 598416 bytes
  .../usr/lib/modules/6.18.21-zenith+/r8169.ko  | Bin 0 -> 376616 bytes
  .../lib/modules/6.18.21-zenith+/realtek.ko    | Bin 0 -> 76776 bytes
- 97 files changed, 148 insertions(+), 5 deletions(-)
+ 97 files changed, 151 insertions(+), 6 deletions(-)
  create mode 100644 .github/workflows/cla.yml
  create mode 100755 initrd/usr/bin/insmod
  create mode 100644 initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw
@@ -254,7 +254,7 @@ index 0000000..518169c
 +            If this work was done as an employee, your company must also send the Corporate CLA to contact@blisslabs.org.
 +          custom-allsigned-prcomment: All contributors on this pull request have signed the BlissLabs CLA.
 diff --git a/Android.mk b/Android.mk
-index 597d2dc..462df3e 100644
+index 597d2dc..23bd3bd 100644
 --- a/Android.mk
 +++ b/Android.mk
 @@ -72,6 +72,16 @@ else
@@ -294,7 +294,16 @@ index 597d2dc..462df3e 100644
  
  .PHONY: initrdimage
  initrdimage: $(INITRD_RAMDISK)
-@@ -145,8 +166,7 @@ $(ISO_IMAGE): $(iso_dir) $(BUILT_IMG)
+@@ -139,14 +160,15 @@ $(iso_dir): $(shell find $(LOCAL_PATH)/iso -type f | sort -r) | $(ACP)
+ 	$(hide) sed -i "s|VER|$(VER)|" $@/boot/grub/grub.cfg
+ 	$(hide) echo "$(BOARD_KERNEL_CMDLINE)" > $@/cmdline.txt
+ 
+-ISO_IMAGE := $(PRODUCT_OUT)/bass-lineout-$(LINEAGE_VERSION).iso
++# los-tv: keep the historical LineageOS-style artefact name
++# (BassOS/"lineout" branding is upstream; project is LineageOS TV).
++ISO_IMAGE := $(PRODUCT_OUT)/lineage-$(LINEAGE_VERSION).iso
+ $(ISO_IMAGE): $(iso_dir) $(BUILT_IMG)
+ 	@echo ----- Making iso image ------
  	PATH="/sbin:/usr/sbin:/bin:/usr/bin"; \
  	xorriso -as mkisofs -graft-points --modification-date=$(MOD_DATE) -b /boot/grub/i386-pc/eltorito.img \
  		-no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info --grub2-mbr $(BOOT_HYBRID) \
