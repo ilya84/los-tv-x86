@@ -278,8 +278,9 @@ ensure_glslang() {
             || die "не склонировался glslang"
     fi
     cmake -S "$src" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+        -DENABLE_OPT=OFF -DENABLE_GLSLANG_BINARIES=ON \
         >/dev/null || die "cmake configure glslang не прошёл"
-    cmake --build "$build" --target glslangValidator -j"$JOBS" \
+    cmake --build "$build" --target glslang-standalone -j"$JOBS" \
         || die "сборка glslang не прошла"
     mkdir -p "$BIN"
     ln -sf "$build/StandAlone/glslangValidator" "$BIN/glslangValidator"
