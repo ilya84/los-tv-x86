@@ -177,7 +177,54 @@ LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 > Безопасность: текущая OTA подписана публичным `testkey`. Для раздачи в
 > интернет нужны собственные release-ключи и пересборка `otacerts`.
 
-## 8. Установка
+## 8. Своя подпись (userdebug)
+
+`userdebug` и подпись не связаны: можно оставить отладочную сборку и
+подписывать её своими ключами. Ключи хранятся вне git, в
+`vendor/lineage-priv/keys/` (LineageOS автоматически подхватывает
+`vendor/lineage-priv/keys/keys.mk`).
+
+```sh
+mkdir -p vendor/lineage-priv/keys
+cd vendor/lineage-priv/keys
+for k in releasekey platform shared media networkstack bluetooth nfc sdk_sandbox; do
+  ../../../development/tools/make_key "$k" \
+    '/C=RU/O=los-tv/OU=Android/CN=los-tv/emailAddress=admin@kacnep.ru'
+done
+chmod 600 ./*.pk8
+cat > keys.mk <<'EOF'
+PRODUCT_DEFAULT_DEV_CERTIFICATE := vendor/lineage-priv/keys/releasekey
+EOF
+```
+
+`make_key` спросит пароль (можно пустой) и создаст `.pk8` + `.x509.pem`.
+Приватные ключи обязательно сохранить в надёжном месте: потеря =
+невозможность выпускать обновления.
+
+Сборка остаётся userdebug:
+
+```sh
+source build/envsetup.sh
+lunch lineage_x86_64_tv trunk_staging userdebug
+m iso_img
+```
+
+`make-ota.sh` сам выберет `releasekey`, если он есть; для перехода со
+старого `testkey` первый OTA нужно подписать старым ключом:
+
+```sh
+OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
+```
+
+После установки такого переходного OTA на устройстве появится новый
+`otacerts`, и следующие OTA можно подписывать уже `releasekey`. Если
+раздавать новый ISO/slot-образ напрямую — переходный OTA не нужен.
+
+Ориентиры по времени: генерация ключей — 5–10 минут; первый
+инкрементальный rebuild из-за смены сертификатов — обычно 1–3 часа;
+полный clean — 8–11 часов; пересборка OTA — 10–20 минут.
+
+## 9. Установка
 
 1. Записать ISO на USB (`dd`/Rufus).
 2. Загрузиться с USB, установить на диск (Calamares).
@@ -186,13 +233,14 @@ LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
    и выбрать в GRUB `Recovery → Установить проприетарные компоненты`
    (или открыть плитку в Android).
 
-## 9. Текущее состояние и ограничения
+## 10. Текущее состояние и ограничения
 
 Проверено 2026-11-12:
 
 - `intel` — production, слот `_a`, build `1794305356`, `system.img`
   md5 `b86ab89661c8f600d5971cd78cd94825`;
-- ISO 2026-11-10 — md5 `1c40b137a89b461b3429a684fefdc747`;
+- ISO 2026-11-12 — `lineage-23.2-20261112-UNOFFICIAL-x86_64_tv.iso`,
+  md5 `573a7265aa57ec60e4e6e75079d8a617`;
 - OTA 2026-11-10 — md5 `643b5f4049ebd5bab25988d1ed322f35`;
 - `e3000n` — тестовый стенд, пока на build `1793842837` (2026-11-05);
 - userdebug, SELinux Enforcing; без шифрования данных;

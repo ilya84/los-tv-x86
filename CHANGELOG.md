@@ -21,6 +21,9 @@
   сетевой OTA (`lineage.updater.uri`, HTTPS, Range).
 - `BUILD.md`: результат ISO — `lineage-23.2-*-x86_64_tv.iso` (историческое
   имя; upstream `bass-lineout-*` убран).
+- ISO 2026-11-12: `lineage-23.2-20261112-UNOFFICIAL-x86_64_tv.iso`,
+  md5 `573a7265aa57ec60e4e6e75079d8a617`, sha256 `0277c39f…`;
+  system `b86ab896…`, install.sfs `abe44dc7…`.
 - Device tree `a4a40e2`: опциональный `LOS_TV_OTA_URI` →
   `lineage.updater.uri`; из `vendorsetup.sh` убран вызов несуществующего
   `newinstaller-ng`; aaropa `c5107b0`: `aaropa.lock` закреплён на `20260905`,

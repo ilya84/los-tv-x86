@@ -63,7 +63,22 @@ if [ "$ISZ" != "16777216" ]; then
 fi
 echo "initrd: RADIO/initrd.img = $ISZ байт (16 МиБ, OK)"
 
-"$TREE/out/host/linux-x86/bin/ota_from_target_files" -v \
+# Подпись OTA. По умолчанию: releasekey из vendor/lineage-priv/keys, если он
+# есть; иначе штатный testkey. Для перехода со старого testkey на новые ключи
+# первый OTA нужно подписать старым ключом:
+#   OTA_KEY=$TREE/build/make/target/product/security/testkey bash make-ota.sh
+OTA_KEY="${OTA_KEY:-auto}"
+if [ "$OTA_KEY" = "auto" ]; then
+  if [ -f "$TREE/vendor/lineage-priv/keys/releasekey.pk8" ]; then
+    OTA_KEY="$TREE/vendor/lineage-priv/keys/releasekey"
+  else
+    OTA_KEY="$TREE/build/make/target/product/security/testkey"
+  fi
+fi
+[ -f "$OTA_KEY.pk8" ] || { echo "!! нет ключа OTA: $OTA_KEY.pk8"; exit 1; }
+echo "OTA key: $OTA_KEY"
+
+"$TREE/out/host/linux-x86/bin/ota_from_target_files" -v -k "$OTA_KEY" \
   --extracted_input_target_files "$WORK" \
   "$TF" "$OTA"
 
