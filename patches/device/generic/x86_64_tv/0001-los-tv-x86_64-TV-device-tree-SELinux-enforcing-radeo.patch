@@ -1,13 +1,9 @@
-From 179d7e27c6cd24c1e0f251a37d7e9c86e2db9810 Mon Sep 17 00:00:00 2001
+From a4a40e27d763261ed0f2a4358bfd0560f0e906e3 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Tue, 10 Nov 2026 22:28:04 +1000
+Date: Thu, 12 Nov 2026 10:47:57 +1000
 Subject: [PATCH] los-tv: x86_64 TV device tree (RTP sender, YouTube
- preinstall, mediaextractor, RTC UTC)
+ preinstall, mediaextractor, RTC UTC, network OTA)
 
-Squashed los-tv branch for publication. Includes the native audio RTP
-sender and TvSettings controls, RTC in UTC, mediaextractor boot fix,
-bt_hotplug watcher, YouTube preinstall (base+split install-session,
-ghost-safe repair after reflash) and the 2026-11-10 init-rc/preinstall fix.
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -39,7 +35,7 @@ ghost-safe repair after reflash) and the 2026-11-10 init-rc/preinstall fix.
  bootctrl/{Android.bp.bak => Android.bp}       |     0
  bt_hotplug/bt_hotplug.rc                      |    11 +
  bt_hotplug/bt_hotplug.sh                      |   118 +
- device.mk                                     |   169 +-
+ device.mk                                     |   176 +-
  dhcp_recovery/{Android.bp.bak => Android.bp}  |     0
  .../client/{Android.bp.bak => Android.bp}     |     0
  .../common/{Android.bp.bak => Android.bp}     |     0
@@ -147,10 +143,11 @@ ghost-safe repair after reflash) and the 2026-11-10 init-rc/preinstall fix.
  sepolicy/vendor/hal_drm_widevine.te           |    12 +
  sepolicy/vendor/los-tv.te                     |    41 +
  sepolicy/vendor/property_contexts             |     3 +
+ vendorsetup.sh                                |     1 -
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 141 files changed, 76157 insertions(+), 91 deletions(-)
+ 142 files changed, 76164 insertions(+), 92 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -14734,7 +14731,7 @@ index 0000000..bb2a1a3
 +    log "new baseline:${_base:-<none>}"
 +done
 diff --git a/device.mk b/device.mk
-index 682a708..2e1823f 100644
+index 682a708..c9e07fc 100644
 --- a/device.mk
 +++ b/device.mk
 @@ -1,18 +1,3 @@
@@ -14777,7 +14774,21 @@ index 682a708..2e1823f 100644
      dalvik.vm.useautofastjni=true \
      ro.surface_flinger.max_frame_buffer_acquired_buffers=3 \
      audio.safemedia.bypass=true \
-@@ -85,12 +75,16 @@ PRODUCT_COPY_FILES += \
+@@ -64,6 +54,13 @@ PRODUCT_PROPERTY_OVERRIDES := \
+     external_storage.casefold.enabled=1 \
+     external_storage.projid.enabled=1
+ 
++
++# Network OTA: optional custom Updater endpoint (lineage.updater.uri).
++# Build with LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json.
++ifneq ($(LOS_TV_OTA_URI),)
++PRODUCT_PROPERTY_OVERRIDES += lineage.updater.uri=$(LOS_TV_OTA_URI)
++endif
++
+ PRODUCT_SYSTEM_EXT_PROPERTIES += ro.setupwizard.mode=DISABLED
+ 
+ PRODUCT_COPY_FILES := \
+@@ -85,12 +82,16 @@ PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/ppp/ip-up:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-up \
      $(LOCAL_PATH)/ppp/ip-down:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/ip-down \
      $(LOCAL_PATH)/ppp/peers/gprs:$(TARGET_COPY_OUT_SYSTEM)/etc/ppp/peers/gprs \
@@ -14795,7 +14806,7 @@ index 682a708..2e1823f 100644
      external/mesa3d/src/util/00-mesa-defaults.conf:$(TARGET_COPY_OUT_VENDOR)/etc/drirc
  
  # Copy Vendor Files
-@@ -100,7 +94,6 @@ PRODUCT_COPY_FILES += \
+@@ -100,7 +101,6 @@ PRODUCT_COPY_FILES += \
      frameworks/native/data/etc/android.hardware.bluetooth.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth.xml \
      frameworks/native/data/etc/android.hardware.bluetooth_le.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.bluetooth_le.xml \
      frameworks/native/data/etc/android.hardware.ethernet.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.ethernet.xml \
@@ -14803,7 +14814,7 @@ index 682a708..2e1823f 100644
      frameworks/native/data/etc/android.hardware.gamepad.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.gamepad.xml \
      frameworks/native/data/etc/android.software.ipsec_tunnels.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.software.ipsec_tunnels.xml \
      frameworks/native/data/etc/android.hardware.location.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.location.xml \
-@@ -112,8 +105,6 @@ PRODUCT_COPY_FILES += \
+@@ -112,8 +112,6 @@ PRODUCT_COPY_FILES += \
      frameworks/native/data/etc/android.hardware.sensor.gyroscope.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.gyroscope.xml \
      frameworks/native/data/etc/android.hardware.sensor.light.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.light.xml \
      frameworks/native/data/etc/android.hardware.sensor.proximity.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.proximity.xml \
@@ -14812,7 +14823,7 @@ index 682a708..2e1823f 100644
      frameworks/native/data/etc/android.hardware.usb.accessory.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.accessory.xml \
      frameworks/native/data/etc/android.hardware.usb.host.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.usb.host.xml \
      frameworks/native/data/etc/android.hardware.wifi.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.xml \
-@@ -152,6 +143,15 @@ endif
+@@ -152,6 +150,15 @@ endif
  PRODUCT_COPY_FILES += \
      $(if $(wildcard $(PRODUCT_DIR)init.recovery.$(TARGET_PRODUCT).rc),$(PRODUCT_DIR)init.recovery.$(TARGET_PRODUCT).rc,$(LOCAL_PATH)/init.recovery.x86.rc):$(TARGET_COPY_OUT_RECOVERY)/root/init.recovery.$(TARGET_PRODUCT).rc \
      $(if $(wildcard $(PRODUCT_DIR)init.recovery.sh),$(PRODUCT_DIR),$(LOCAL_PATH)/)init.recovery.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init.recovery.sh \
@@ -14828,7 +14839,7 @@ index 682a708..2e1823f 100644
      $(if $(wildcard $(PRODUCT_DIR)init.fstab.sh),$(PRODUCT_DIR),$(LOCAL_PATH)/)init.fstab.sh:$(TARGET_COPY_OUT_RECOVERY)/root/system/etc/init.fstab.sh \
  
  PRODUCT_TAGS += dalvik.gc.type-precise
-@@ -212,7 +212,6 @@ $(call inherit-product-if-exists,hardware/libsensors/sensors.mk)
+@@ -212,7 +219,6 @@ $(call inherit-product-if-exists,hardware/libsensors/sensors.mk)
  $(call inherit-product-if-exists,$(LOCAL_PATH)/glodroid/device_glodroid.mk)
  
  ifeq ($(USE_LIBNDK_TRANSLATION_NB),true)
@@ -14836,7 +14847,7 @@ index 682a708..2e1823f 100644
  $(call inherit-product-if-exists, vendor/google/emu-x86/target/native_bridge_arm_on_x86.mk)
  NDK_TRANSLATION_PREINSTALL := google
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
-@@ -225,8 +224,6 @@ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
+@@ -225,8 +231,6 @@ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
  ifeq ($(ANDROID_USE_NDK_TRANSLATION),true)
@@ -14845,7 +14856,7 @@ index 682a708..2e1823f 100644
  PRODUCT_SYSTEM_DEFAULT_PROPERTIES += persist.sys.nativebridge=1
  endif
  
-@@ -285,10 +282,130 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
+@@ -285,10 +289,130 @@ PRODUCT_REQUIRES_INSECURE_EXECMEM_FOR_SWIFTSHADER := true
  
  $(call inherit-product-if-exists, hardware/x86power/x86power.mk)
  
@@ -90562,6 +90573,18 @@ index f9ab975..43bce8f 100644
 +
 +# c2-ffmpeg pixel format (radeon RGBX_8888)
 +persist.vendor.ffmpeg-codec2.pixel_format	u:object_r:vendor_ffmpeg_prop:s0 exact string
+diff --git a/vendorsetup.sh b/vendorsetup.sh
+index 2e9e52f..a131e33 100644
+--- a/vendorsetup.sh
++++ b/vendorsetup.sh
+@@ -18,7 +18,6 @@
+ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+ if [ "$SKIP_AG_DOWNLOADS" != "true" ]; then
+ bash bootable/aaropa/download.sh
+-bash bootable/newinstaller-ng/download.sh
+ bash ${CURRENT_DIR}/download_sof-firmware.sh
+ bash ${CURRENT_DIR}/download_ids.sh
+ bash ${CURRENT_DIR}/download_toolchain.sh
 diff --git a/wireless-regdb/Android.bp.bak b/wireless-regdb/Android.bp
 similarity index 100%
 rename from wireless-regdb/Android.bp.bak
@@ -90657,4 +90680,7 @@ c<nyh3H?#G#Ool@W0xNGES?l*aXwnBE07tvTl>h($
 
 literal 0
 HcmV?d00001
+
+-- 
+2.39.5
 

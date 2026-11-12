@@ -1,15 +1,13 @@
-From bdb615c826f5fea6af589b2eb1c7d1e4e660296f Mon Sep 17 00:00:00 2001
+From bf552c0790b7a3c19bf426ece76b5174a1f338b9 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Tue, 10 Nov 2026 22:28:37 +1000
+Date: Thu, 12 Nov 2026 10:48:05 +1000
 Subject: [PATCH] los-tv: initrd on Bliss-Bass 8c6a69f: BCB recovery,
- /metadata, NIC firmware
+ /metadata, NIC firmware, pinned aaropa 20260905
 
-Squashed publication branch. Includes BCB recovery/MODE reset, persistent
-/metadata, NIC firmware and modules, and keeps the upstream BlissLabs CLA
-workflow file. Built/tested as initrd.img 2026-11-10.
 ---
  .github/workflows/cla.yml                     |  49 ++++++++++++
  Android.mk                                    |  26 +++++-
+ aaropa.lock                                   |   4 +-
  initrd/init                                   |  74 ++++++++++++++++++
  initrd/usr/bin/insmod                         | Bin 0 -> 682696 bytes
  initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw | Bin 0 -> 2076 bytes
@@ -104,7 +102,7 @@ workflow file. Built/tested as initrd.img 2026-11-10.
  .../usr/lib/modules/6.18.21-zenith+/r8152.ko  | Bin 0 -> 598416 bytes
  .../usr/lib/modules/6.18.21-zenith+/r8169.ko  | Bin 0 -> 376616 bytes
  .../lib/modules/6.18.21-zenith+/realtek.ko    | Bin 0 -> 76776 bytes
- 96 files changed, 146 insertions(+), 3 deletions(-)
+ 97 files changed, 148 insertions(+), 5 deletions(-)
  create mode 100644 .github/workflows/cla.yml
  create mode 100755 initrd/usr/bin/insmod
  create mode 100644 initrd/usr/lib/firmware/rtl_nic/rtl8105e-1.fw
@@ -306,6 +304,25 @@ index 597d2dc..462df3e 100644
  		--protective-msdos-label -o $@ $^ --sort-weight 0 / --sort-weight 1 /boot \
  		-V "$(DISK_LABEL)"
  	$(hide) $(SHA256) $(ISO_IMAGE) | sed "s|$(PRODUCT_OUT)/||" > $(ISO_IMAGE).sha256sum
+diff --git a/aaropa.lock b/aaropa.lock
+index 53b60cb..d311bf8 100644
+--- a/aaropa.lock
++++ b/aaropa.lock
+@@ -35,12 +35,12 @@ grub2-themes.ref=1979a59181fe80c7c5f383273c1722cfdaf1d33f
+ 
+ [fetch.bliss]
+ github_repo=Ananda-Aropa/aaropa_rootfs_installer_blissos
+-tag=latest
++tag=20260905
+ assets=install.sfs initrd_lib.tar.gz grub-rescue.iso boot_hybrid.img
+ 
+ [fetch.bass]
+ github_repo=Ananda-Aropa/aaropa_rootfs_installer_bass
+-tag=latest
++tag=20260905
+ assets=install.sfs initrd_lib.tar.gz grub-rescue.iso boot_hybrid.img
+ 
+ [flavor.bliss]
 diff --git a/initrd/init b/initrd/init
 index c30d575..fefbbf0 100755
 --- a/initrd/init
@@ -18261,4 +18278,7 @@ g+79JTvL)?O%60kp{b=d(_fNNySHg2ma?|<$KM}o%XaE2J
 
 literal 0
 HcmV?d00001
+
+-- 
+2.39.5
 
