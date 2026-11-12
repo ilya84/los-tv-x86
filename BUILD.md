@@ -29,7 +29,7 @@ repo sync -j8
 ## 2. Патчи к остальным проектам
 
 ```sh
-./scripts/apply-patches.sh ~/android/los-tv-x86
+./scripts/apply-patches.sh ~/android/los-tv-23
 ```
 
 Скрипт читает `patches/series` и применяет `git am -3` к проектам
@@ -40,12 +40,15 @@ repo sync -j8
 Патчи для `device/generic/x86_64_tv` и `bootable/aaropa` в серии есть, но
 при использовании наших форков они не нужны — скрипт их пропустит.
 
+Для чистого дерева удобнее один `scripts/bootstrap-tree.sh` (раздел 3a):
+он делает всё нижеперечисленное автоматически.
+
 ## 3. Сторонние APK
 
-В git их нет (см. `.gitignore`, `device/generic/x86_64_tv/prebuilt/README.md`).
-Положите в `device/generic/x86_64_tv/prebuilt/`:
+Bootstrap скачивает их сам по `scripts/prebuilts.lock` с проверкой sha256.
+Вручную — положить в `device/generic/x86_64_tv/prebuilt/`:
 
-- `F-Droid.apk` — https://f-droid.org/F-Droid.apk
+- `F-Droid.apk` — https://f-droid.org/repo/org.fdroid.fdroid_2000051.apk
 - `microG-GmsCore.apk` — https://github.com/microg/GmsCore/releases
   (0.3.17.252432, sha256 `e5e6cba078bdec812b5450599350e5c1a12c8b7438da5bf77123af170f8c1a35`)
 - `user/JellyfinTV.apk` — F-Droid, 0.19.10 (191099), sha256
@@ -55,6 +58,19 @@ repo sync -j8
 
 Play Store в базовый образ не входит; его APK пользователь кладёт в
 `/sdcard/los-tv-proprietary` и ставит через add-on.
+
+## 3a. Bootstrap чистого дерева
+
+```sh
+git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
+~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23
+```
+
+Скрипт применяет патчи, скачивает APK, проверяет/докачивает
+`bootable/aaropa/initrd_lib` и `iso/install.sfs`, патчит `install.sfs`,
+ставит meson/glslang при необходимости и создаёт симлинки в
+`out/host/linux-x86/bin`. Идемпотентен; после `m clean` достаточно
+повторить. `--check` — только проверка, `--install-deps` — Debian-пакеты.
 
 ## 4. Сборка ISO
 
@@ -70,12 +86,11 @@ m iso_img
 `scripts/run-iso-full.sh` — пример запуска в фоне с логом (пути поправьте).
 
 Замечание: `install.sfs` (Calamares) собирается отдельно и патчится
-оверлеем из `installer/` (`scripts/patch-install-sfs.sh`, режим
+оверлеем из `installer/` (`installer/patch-install-sfs.sh`, режим
 `MODE=apply`). Перед `m iso_img` он должен лежать в
-`bootable/aaropa/iso/install.sfs`. На текущей build-vm он уже пропатчен
-(md5 `abe44dc7…`, маркер `install.sfs.patched`), поэтому стандартная
-команда работает без дополнительных шагов; после `m clean` восстановить
-симлинки `out/host/linux-x86/bin/meson` и `glslangValidator`.
+`bootable/aaropa/iso/install.sfs`. Bootstrap (3a) делает это сам; после
+`m clean` достаточно повторить bootstrap — он вернёт симлинки
+`out/host/linux-x86/bin/meson` и `glslangValidator`.
 
 ## 5. Сборка OTA
 
@@ -94,6 +109,16 @@ bash scripts/make-ota.sh
 После OTA add-on восстанавливает компоненты автоматически: приложение
 `addon-autorestore` создаёт маркер, GRUB грузит recovery, установщик ставит
 компоненты на месте в активный слот (1–3 минуты).
+
+## 5a. Сетевой OTA (задел)
+
+В образе уже есть LineageOS Updater, `update_engine` и A/B; пункт
+«Обновление системы» открывается из TV Settings. Для своего сервера нужен
+HTTPS с JSON и системное свойство `lineage.updater.uri` (по умолчанию
+используется официальный сервер LineageOS, где сборок x86_64_tv нет).
+Генератор JSON — `scripts/make-ota-index.py`; схема описана в
+`packages/apps/Updater/README.md`. В текущую сборку сетевой OTA не включён;
+рабочий путь — `adb sideload`.
 
 ## 6. Установка
 

@@ -30,13 +30,18 @@
 #     refind-conf/refind-postconf) и no-bootloader — неподдерживаемые ветки.
 set -uo pipefail
 
+HERE=$(cd "$(dirname "$0")" && pwd)
+TREE="${TREE:-$HOME/android/los-tv-23}"
 MODE="${MODE:-check}"
-SFS="${SFS:-$HOME/android/los-tv-23/bootable/aaropa/iso/install.sfs}"
-OVERLAY="${OVERLAY:-/tmp/opencode/installer-overlay}"
-BASE_MD5="${BASE_MD5:-4ef2af1cb15edcf08efd3f1392f47581}"
+SFS="${SFS:-$TREE/bootable/aaropa/iso/install.sfs}"
+# Канонический оверлей лежит в репозитории (installer/overlay), а не в /tmp.
+OVERLAY="${OVERLAY:-$HERE/../installer/overlay}"
+# База Ananda-Aropa 20260905 + repair-скрипт aaropa (fetch). Старые базы
+# можно обработать через BASE_MD5=... / ALLOW_OTHER_BASE=1.
+BASE_MD5="${BASE_MD5:-5786133db5f5bbc5b45c090482057e57}"
 FORCE="${FORCE:-0}"
 ALLOW_OTHER_BASE="${ALLOW_OTHER_BASE:-0}"
-MARKER="${MARKER:-$HOME/android/los-tv-23/bootable/aaropa/install.sfs.patched}"
+MARKER="${MARKER:-$TREE/bootable/aaropa/install.sfs.patched}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/install-sfs-backup}"
 
 FAIL=0

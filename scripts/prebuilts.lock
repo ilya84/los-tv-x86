@@ -1,0 +1,11 @@
+# path (относительно device/generic/x86_64_tv/prebuilt)  sha256  url
+#
+# Эти APK не лежат в git (см. prebuilt/README.md). Скрипт
+# scripts/bootstrap-tree.sh скачивает недостающие и проверяет sha256.
+# Play Store / YouTube TV / Wink / Кинопоиск сюда НЕ входят: это
+# пользовательские APK для add-on, базовая сборка их не требует.
+#
+F-Droid.apk	83d3fe522281c3cb89fce3bc05038f81b3c3b32c108536941f184c5f9bb53778	https://f-droid.org/repo/org.fdroid.fdroid_2000051.apk
+microG-GmsCore.apk	e5e6cba078bdec812b5450599350e5c1a12c8b7438da5bf77123af170f8c1a35	https://github.com/microg/GmsCore/releases/download/v0.3.17.252432/com.google.android.gms-252432034.apk
+user/JellyfinTV.apk	8510a517c99927076082917f41bf306dd7a2546c59d492dd11bde18d6e2e4628	https://f-droid.org/repo/org.jellyfin.androidtv_191099.apk
+user/VLC-x86_64.apk	4646633ede40c4784c5584087cffc5c60cc45b16966ae0b36cedd784d7c4a11e	https://download.videolan.org/pub/videolan/vlc-android/3.7.1/VLC-Android-3.7.1-x86_64.apk
