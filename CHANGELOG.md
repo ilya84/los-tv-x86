@@ -6,6 +6,21 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-12 — bootstrap сборки и подготовка сетевого OTA
+
+- `scripts/bootstrap-tree.sh` — один идемпотентный шаг после `repo sync`:
+  патчи, prebuilt APK по `scripts/prebuilts.lock` с sha256, aaropa
+  `initrd_lib`/`install.sfs`, патч `install.sfs`, meson/glslang и симлинки
+  в `out/host/linux-x86/bin`. После `m clean` достаточно повторить.
+- `installer/patch-install-sfs.sh` стал переносимым: пути считаются от
+  репозитория, база обновлена на актуальную; добавлен `TREE`/`OVERLAY`.
+- `scripts/make-ota-index.py` — генератор JSON для LineageOS Updater из
+  full-OTA zip (sha256, size, `ota_property_files`).
+- Актуализирован `BUILD.md`: чистый bootstrap, актуальные APK/URL, ISO
+  `bass-lineout-*`, full OTA через `scripts/make-ota.sh`, опциональный
+  сетевой OTA (`lineage.updater.uri`, HTTPS, Range).
+- Роли стендов: `intel` — production, `e3000n` — тестовый.
+
 ## 2026-11-10 — YouTube TV переживает перепрошивку (preinstall)
 
 - `prebuilt_etc`-модули init-rc теперь устанавливаются с явным `filename:
