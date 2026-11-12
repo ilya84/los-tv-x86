@@ -6,6 +6,22 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-13 — userdebug с собственными ключами; e3000n на новой сборке
+
+- Добавлена поддержка собственных ключей: `vendor/lineage-priv/keys`
+  (CN `los-tv-x86`), `PRODUCT_DEFAULT_DEV_CERTIFICATE=releasekey`;
+  userdebug-сборка получает `ro.build.tags=release-keys`, `otacerts.zip`
+  содержит `releasekey.x509.pem`. `make-ota.sh` автоматически выбирает
+  `releasekey`, для перехода со старого testkey — `OTA_KEY=.../testkey`.
+- `e3000n` напрямую прошит в `_a` (build `1794522175`): release-keys,
+  Enforcing, RTP-сендер, NDK/Widevine, Play Store/YouTube 7.31.301;
+  `_b` — старый test-keys откат.
+- Исправлена ошибка recovery: на x86-схеме `recovery$SLOT.img` — это
+  padded `ramdisk-recovery.img` (gzip cpio), а не `recovery.img`
+  (Android boot image), иначе recovery падает в kernel panic.
+- ISO 2026-11-13: md5 `6ffbee1ce7d3d250291b46aae3aad0f9`; `system.img`
+  release-keys md5 `fceb9ed99c440a239969156cc5bebcd7`.
+
 ## 2026-11-12 — bootstrap сборки и подготовка сетевого OTA
 
 - `scripts/bootstrap-tree.sh` — один идемпотентный шаг после `repo sync`:

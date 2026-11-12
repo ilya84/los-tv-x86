@@ -1,6 +1,6 @@
 # Сборка
 
-Проверено 2026-11-12 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
+Проверено 2026-11-13 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
 Текущие стенды: `intel` (H81M-E) — production, `e3000n` (AMD E2) — тестовый.
 
 ## 0. Быстрый старт
@@ -235,14 +235,19 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 
 ## 10. Текущее состояние и ограничения
 
-Проверено 2026-11-12:
+Проверено 2026-11-13:
 
-- `intel` — production, слот `_a`, build `1794305356`, `system.img`
-  md5 `b86ab89661c8f600d5971cd78cd94825`;
-- ISO 2026-11-12 — `lineage-23.2-20261112-UNOFFICIAL-x86_64_tv.iso`,
-  md5 `573a7265aa57ec60e4e6e75079d8a617`;
-- OTA 2026-11-10 — md5 `643b5f4049ebd5bab25988d1ed322f35`;
-- `e3000n` — тестовый стенд, пока на build `1793842837` (2026-11-05);
+- `intel` — production, слот `_a`, build `1794305356` (testkey);
+- текущий артефакт с release-keys: `system.img` md5
+  `fceb9ed99c440a239969156cc5bebcd7`, build `1794522175`;
+- ISO 2026-11-13 — `lineage-23.2-20261112-UNOFFICIAL-x86_64_tv.iso`,
+  md5 `6ffbee1ce7d3d250291b46aae3aad0f9`;
+- OTA 2026-11-10 — md5 `643b5f4049ebd5bab25988d1ed322f35` (testkey);
+- `e3000n` — тестовый стенд, `_a` build `1794522175` (release-keys),
+  `_b` — старый `1793842837` test-keys для отката;
 - userdebug, SELinux Enforcing; без шифрования данных;
 - обязательность SSE4.2 не подтверждена (в работе);
 - видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
+
+`recovery$SLOT.img` на x86-схеме — это padded `ramdisk-recovery.img`
+(gzip cpio), а не `recovery.img`; иначе recovery уходит в kernel panic.
