@@ -19,7 +19,11 @@
 - Исправлена ошибка recovery: на x86-схеме `recovery$SLOT.img` — это
   padded `ramdisk-recovery.img` (gzip cpio), а не `recovery.img`
   (Android boot image), иначе recovery падает в kernel panic.
-- ISO 2026-11-13: md5 `6ffbee1ce7d3d250291b46aae3aad0f9`; `system.img`
+- Add-on recovery теперь при обновлении preinstall берёт уже установленный
+  YouTube APK из `/data/app`, а не старый APK из `/sdcard`; это убирает
+  `INSTALL_FAILED_VERSION_DOWNGRADE` при ghost-пакете.
+- ISO 2026-11-13: md5 `7fc769697ed3c329cf122bc409345365`; OTA 2026-11-13:
+  md5 `869b68180a738b6f41210392b2216473` (releasekey); `system.img`
   release-keys md5 `fceb9ed99c440a239969156cc5bebcd7`.
 
 ## 2026-11-12 — bootstrap сборки и подготовка сетевого OTA

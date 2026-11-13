@@ -240,9 +240,9 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 - `intel` — production, слот `_a`, build `1794305356` (testkey);
 - текущий артефакт с release-keys: `system.img` md5
   `fceb9ed99c440a239969156cc5bebcd7`, build `1794522175`;
-- ISO 2026-11-13 — `lineage-23.2-20261112-UNOFFICIAL-x86_64_tv.iso`,
-  md5 `6ffbee1ce7d3d250291b46aae3aad0f9`;
-- OTA 2026-11-10 — md5 `643b5f4049ebd5bab25988d1ed322f35` (testkey);
+- ISO 2026-11-13 — `lineage-23.2-20261113-UNOFFICIAL-x86_64_tv.iso`,
+  md5 `7fc769697ed3c329cf122bc409345365`;
+- OTA 2026-11-13 — md5 `869b68180a738b6f41210392b2216473` (releasekey).
 - `e3000n` — тестовый стенд, `_a` build `1794522175` (release-keys),
   `_b` — старый `1793842837` test-keys для отката;
 - userdebug, SELinux Enforcing; без шифрования данных;

@@ -1,8 +1,8 @@
-From a4a40e27d763261ed0f2a4358bfd0560f0e906e3 Mon Sep 17 00:00:00 2001
+From 01491285442842ac8c2641ffbeca078ce20438da Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Thu, 12 Nov 2026 10:47:57 +1000
-Subject: [PATCH] los-tv: x86_64 TV device tree (RTP sender, YouTube
- preinstall, mediaextractor, RTC UTC, network OTA)
+Date: Fri, 13 Nov 2026 10:06:15 +1000
+Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
+ network OTA, addon uses installed YouTube APK)
 
 ---
  .gitignore                                    |    11 +-
@@ -12,8 +12,8 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP sender, YouTube
  addon/Android.bp                              |    32 +
  ...roid.hardware.drm-service-lazy.widevine.rc |    12 +
  addon/links.txt                               |    16 +
- addon/los-tv-addon-boot.sh                    |   304 +
- addon/los-tv-addon.sh                         |   734 +
+ addon/los-tv-addon-boot.sh                    |   313 +
+ addon/los-tv-addon.sh                         |   756 +
  addon/los-tv-gpt.cpp                          |   132 +
  addon/los-tv-msg.cpp                          |   253 +
  ..._android.hardware.drm-service.widevine.xml |    10 +
@@ -147,7 +147,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP sender, YouTube
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 142 files changed, 76164 insertions(+), 92 deletions(-)
+ 142 files changed, 76195 insertions(+), 92 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -493,10 +493,10 @@ index 0000000..01e2e5e
 +L|youtube_apkmirror|YouTube TV — APKMirror|https://www.apkmirror.com/apk/google-inc/youtube-for-android-tv-android-tv/|||Нужен bundle для arm64-v8a (файл .apkm)
 diff --git a/addon/los-tv-addon-boot.sh b/addon/los-tv-addon-boot.sh
 new file mode 100644
-index 0000000..81bcccf
+index 0000000..6ea0ba8
 --- /dev/null
 +++ b/addon/los-tv-addon-boot.sh
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,313 @@
 +#!/system/bin/sh
 +#
 +# los-tv: драйвер установки проприетарных компонентов из recovery.
@@ -720,8 +720,17 @@ index 0000000..81bcccf
 +# --- Компоненты уже стоят: только APK --------------------------------------
 +# Образы в этом случае игнорируем: они нужны лишь тогда, когда компонентов
 +# ещё нет. Так плитка «Добавить приложения» не запускает 20-минутный клон.
++INSTALLED_YT=
++for d in /data/app/*/com.google.android.youtube.tv-* \
++         /data/app/com.google.android.youtube.tv-*; do
++    [ -d "$d" ] || continue
++    if [ -f "$d/base.apk" ]; then
++        INSTALLED_YT=1
++        break
++    fi
++done
 +if [ "$COMP" = "1" ]; then
-+    if [ -n "$PLAYAPK" ] || [ -n "$YTAPK" ]; then
++    if [ -n "$PLAYAPK" ] || [ -n "$YTAPK" ] || [ "$INSTALLED_YT" = "1" ]; then
 +        mkdir -p "$WORK"
 +        stage_apks
 +        msg --reset "Adding apps (Play Store / YouTube TV)" \
@@ -803,10 +812,10 @@ index 0000000..81bcccf
 +finish 0
 diff --git a/addon/los-tv-addon.sh b/addon/los-tv-addon.sh
 new file mode 100644
-index 0000000..0dafc4c
+index 0000000..85b4728
 --- /dev/null
 +++ b/addon/los-tv-addon.sh
-@@ -0,0 +1,734 @@
+@@ -0,0 +1,756 @@
 +#!/system/bin/sh
 +#
 +# los-tv: установка проприетарных компонентов (Widevine + NDK translation).
@@ -1267,45 +1276,67 @@ index 0000000..0dafc4c
 +install_youtube() {
 +    src=$1
 +    srcapk=
-+    for f in "$src/YouTube-TV.apk" "$src"/*youtube.tv*.apkm "$src"/*youtube.tv*.apk "$src"/YouTube*.apk; do
-+        if [ -f "$f" ]; then srcapk=$f; break; fi
-+    done
-+    if [ -z "$srcapk" ]; then
-+        log "YouTube TV APK не найден — пропускаю (можно поставить из Play Store)"
-+        return 0
-+    fi
-+    log "YouTube TV: $(basename "$srcapk"), sha256 $(sha256sum "$srcapk" | cut -d' ' -f1)"
-+
-+    apk=$srcapk
++    apk=
 +    split=
-+    case "$srcapk" in
-+        *.apkm|*.zip)
-+            tmpd="$WORK/apkm"
-+            rm -rf "$tmpd"; mkdir -p "$tmpd"
-+            log "распаковываю bundle $(basename "$srcapk")"
-+            unzip -o -q -d "$tmpd" "$srcapk" "base.apk" "split_config.arm64_v8a.apk" || \
-+                log "ВНИМАНИЕ: в bundle нет base.apk/split_config.arm64_v8a.apk"
-+            apk="$tmpd/base.apk"
-+            [ -f "$tmpd/split_config.arm64_v8a.apk" ] && \
-+                split="$tmpd/split_config.arm64_v8a.apk"
-+            ;;
-+        *)
-+            split="$src/YouTubeTV-split_config.arm64_v8a.apk"
-+            [ -f "$split" ] || split=
-+            # Fallback: split мог не попасть в stage_apks (в recovery бывают
-+            # сборки без симлинка). Ищем его рядом с исходным base APK.
-+            if [ -z "$split" ]; then
-+                for d in "$CDROM/data/media/0/los-tv-proprietary" \
-+                         "$CDROM/los-tv-proprietary" \
-+                         /data/los-tv-proprietary; do
-+                    if [ -f "$d/YouTubeTV-split_config.arm64_v8a.apk" ]; then
-+                        split="$d/YouTubeTV-split_config.arm64_v8a.apk"
-+                        break
-+                    fi
-+                done
-+            fi
-+            ;;
-+    esac
++
++    # Если YouTube уже установлен (например, из Play Store), его APK в
++    # /data/app новее того, что лежит в /sdcard. Для preinstall берём именно
++    # установленный APK, иначе после OTA можно получить VERSION_DOWNGRADE.
++    instdir=
++    for d in /data/app/*/com.google.android.youtube.tv-* \
++             /data/app/com.google.android.youtube.tv-*; do
++        [ -d "$d" ] || continue
++        if [ -f "$d/base.apk" ]; then
++            instdir=$d
++            break
++        fi
++    done
++
++    if [ -n "$instdir" ]; then
++        apk="$instdir/base.apk"
++        [ -f "$instdir/split_config.arm64_v8a.apk" ] && \
++            split="$instdir/split_config.arm64_v8a.apk"
++        log "YouTube TV: использую установленный APK из $instdir"
++    else
++        for f in "$src/YouTube-TV.apk" "$src"/*youtube.tv*.apkm "$src"/*youtube.tv*.apk "$src"/YouTube*.apk; do
++            if [ -f "$f" ]; then srcapk=$f; break; fi
++        done
++        if [ -z "$srcapk" ]; then
++            log "YouTube TV APK не найден — пропускаю (можно поставить из Play Store)"
++            return 0
++        fi
++        log "YouTube TV: $(basename "$srcapk"), sha256 $(sha256sum "$srcapk" | cut -d" " -f1)"
++
++        apk=$srcapk
++        case "$srcapk" in
++            *.apkm|*.zip)
++                tmpd="$WORK/apkm"
++                rm -rf "$tmpd"; mkdir -p "$tmpd"
++                log "распаковываю bundle $(basename "$srcapk")"
++                unzip -o -q -d "$tmpd" "$srcapk" "base.apk" "split_config.arm64_v8a.apk" || \
++                    log "ВНИМАНИЕ: в bundle нет base.apk/split_config.arm64_v8a.apk"
++                apk="$tmpd/base.apk"
++                [ -f "$tmpd/split_config.arm64_v8a.apk" ] && \
++                    split="$tmpd/split_config.arm64_v8a.apk"
++                ;;
++            *)
++                split="$src/YouTubeTV-split_config.arm64_v8a.apk"
++                [ -f "$split" ] || split=
++                # Fallback: split мог не попасть в stage_apks (в recovery бывают
++                # сборки без симлинка). Ищем его рядом с исходным base APK.
++                if [ -z "$split" ]; then
++                    for d in "$CDROM/data/media/0/los-tv-proprietary" \
++                             "$CDROM/los-tv-proprietary" \
++                             /data/los-tv-proprietary; do
++                        if [ -f "$d/YouTubeTV-split_config.arm64_v8a.apk" ]; then
++                            split="$d/YouTubeTV-split_config.arm64_v8a.apk"
++                            break
++                        fi
++                    done
++                fi
++                ;;
++        esac
++    fi
 +    [ -f "$apk" ] || die "не найден base APK YouTube TV"
 +    if [ -n "$split" ]; then
 +        log "YouTube TV split: $(basename "$split")"
