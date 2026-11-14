@@ -132,6 +132,14 @@ bash scripts/make-ota.sh
 размер initrd (16 МиБ) и печатает хэши. Установка — `adb reboot sideload` +
 `adb sideload zip`.
 
+Перед сборкой `make-ota.sh` вызывает `scripts/regen-build-props.sh`: он
+удаляет сгенерированные build.prop всех разделов (system/product/
+system_ext/vendor/odm/...) и Soong-intermediates, потому что Soong
+объявляет `out/build_date.txt` order-only зависимостью и на инкрементальной
+сборке оставляет старый `ro.build.version.incremental`. После сборки
+`make-ota.sh` сверяет incremental по всем найденным build.prop. Обход:
+`SKIP_BUILD_PROP_REGEN=1`.
+
 Прямой `m otapackage` не использовать: он даёт
 `lineage_x86_64_tv-ota.zip`, а не `-ota-full.zip`, и упирается в отсутствие
 `META/dynamic_partitions_info.txt` у статических разделов; скрипт обходит
@@ -173,6 +181,28 @@ LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 `datetime` должен быть новее текущего `ro.build.date.utc`, `type` — совпадать
 с `ro.lineage.releasetype` (`UNOFFICIAL`). Схема JSON — в
 `packages/apps/Updater/README.md`.
+
+В настройках Updater есть категория «Автоматическая установка»:
+автоустановка новой сборки после периодической проверки и, опционально,
+автоматическая перезагрузка после `UPDATED_NEED_REBOOT`. Обе опции по
+умолчанию выключены; без периодической проверки автоустановка недоступна.
+На metered-сети и при низком заряде автоустановка пропускается.
+
+При публикации давайте OTA уникальное имя (`...-<incremental>.zip`) и
+обновляйте JSON: Caddy/nginx для `/ota/*` обычно ставят `immutable`, и
+перезапись того же URL может оставить у клиента старый файл.
+
+Если собираете с собственными ключами (`vendor/lineage-priv/keys`), в
+`keys.mk` нужна строка:
+
+```make
+PRODUCT_MAINLINE_BLUETOOTH_SEPOLICY_DEV_CERTIFICATES := vendor/lineage-priv/keys
+```
+
+Иначе для `com.android.bt` `build/make/core/config.mk` возьмёт AOSP-ключ
+`build/make/target/product/security/bluetooth.x509.pem`,
+`plat_mac_permissions.xml` не совпадёт с подписью Bluetooth.apk, и
+`com.android.bluetooth` не запустится (`seinfo=default`, zygote abort).
 
 > Безопасность: текущая OTA подписана публичным `testkey`. Для раздачи в
 > интернет нужны собственные release-ключи и пересборка `otacerts`.

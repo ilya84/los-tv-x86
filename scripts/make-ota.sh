@@ -17,13 +17,59 @@
 #
 # Подробный разбор: data/2026-10-19-ota-full-build.txt
 # step45: добавлена проверка фиксированного размера initrd (16 МиБ).
+# 2026-11-14: перед сборкой удаляются все сгенерированные build.prop
+# (system/product/system_ext/vendor/odm/...), иначе Soong оставляет старый
+# incremental; после сборки значения сверяются по всем разделам.
 
 set -o pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
 TREE=${TREE:-$HOME/android/los-tv-23}
+PRODUCT_OUT="$TREE/out/target/product/x86_64_tv"
 LUNCH_TARGET=lineage_x86_64_tv
 LUNCH_VARIANT=trunk_staging
 LUNCH_TYPE=userdebug
+
+verify_build_props() {
+  local out="$1"
+  local ref_file="$out/system/build.prop"
+  local ref rc=0 f val
+
+  if [ ! -f "$ref_file" ]; then
+    echo "!! нет $ref_file" >&2
+    return 1
+  fi
+
+  ref=$(grep -m1 -E '^ro\.([a-z_]+\.)?build\.version\.incremental=' "$ref_file" \
+    | cut -d= -f2-)
+  if [ -z "$ref" ]; then
+    echo "!! не найден ro.build.version.incremental в $ref_file" >&2
+    return 1
+  fi
+
+  for f in \
+    "$out/system/build.prop" \
+    "$out/system/product/etc/build.prop" \
+    "$out/system/system_ext/etc/build.prop"; do
+    if [ ! -f "$f" ]; then
+      echo "!! нет $f" >&2
+      rc=1
+    fi
+  done
+
+  while IFS= read -r f; do
+    val=$(grep -m1 -E '^ro\.([a-z_]+\.)?build\.version\.incremental=' "$f" \
+      | cut -d= -f2-)
+    if [ -n "$val" ] && [ "$val" != "$ref" ]; then
+      echo "!! $f: incremental=$val, ожидалось $ref" >&2
+      rc=1
+    fi
+  done < <(find "$out/system" -name build.prop -type f | sort)
+
+  [ "$rc" -eq 0 ] && echo "build.prop: все разделы согласованы (incremental=$ref)"
+  return "$rc"
+}
 
 cd "$TREE"
 
@@ -31,8 +77,20 @@ export TOP="$TREE"
 source build/envsetup.sh >/dev/null 2>&1
 lunch "$LUNCH_TARGET" "$LUNCH_VARIANT" "$LUNCH_TYPE" || { echo "!! lunch failed"; exit 1; }
 
+if [ "${SKIP_BUILD_PROP_REGEN:-0}" != "1" ]; then
+  echo "### 0/3 build.prop: форсированная перегенерация"
+  TREE="$TREE" PRODUCT_OUT="$PRODUCT_OUT" \
+    bash "$SCRIPT_DIR/regen-build-props.sh" || { echo "!! build.prop regen failed"; exit 1; }
+fi
+
 echo "### 1/3 target-files"
 m target-files-package || { echo "!! target-files failed"; exit 1; }
+verify_build_props "$PRODUCT_OUT" || { echo "!! build.prop mismatch"; exit 1; }
+if ! grep -q '^lineage.updater.uri=' "$PRODUCT_OUT/system/build.prop"; then
+  echo "!! ВНИМАНИЕ: lineage.updater.uri не задан; Updater будет использовать"
+  echo "!! официальный сервер LineageOS. Для atv.kacnep.ru передайте"
+  echo "!! LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json."
+fi
 
 TF="$TREE/out/target/product/x86_64_tv/obj/PACKAGING/target_files_intermediates/${LUNCH_TARGET}-target_files.zip"
 OTA="$TREE/out/target/product/x86_64_tv/${LUNCH_TARGET}-ota-full.zip"

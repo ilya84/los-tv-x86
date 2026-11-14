@@ -6,6 +6,146 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-14 — OTA при Enforcing и опциональная автоустановка в Updater
+
+- Policy `update_engine` перенесена из `system_ext` в
+  `system/sepolicy/private`: разрешения на initrd-овый `/fstab` (tmpfs/
+  rootfs) и на запись `initrd/kernel/ramdisk-recovery` через
+  `block_device:blk_file`. Прямой `allow` конфликтует с neverallow в
+  `domain.te`, поэтому для `update_engine` сделано точечное исключение
+  `-update_engine`. Policy теперь приезжает вместе с `system` и не
+  зависит от обновления `system_ext`.
+- `system_ext`/`product` в этой x86-схеме — каталоги внутри `system.img`,
+  а не отдельные A/B-разделы; добавлять их в `AB_OTA_PARTITIONS` нельзя.
+  Причина старых build.prop — order-only зависимость Soong от
+  `out/build_date.txt`. Новый `scripts/regen-build-props.sh` (вызывается
+  `make-ota.sh`) удаляет все build.prop/intermediates, а `make-ota.sh`
+  сверяет `ro.*.build.version.incremental` по всем разделам.
+- В существующие настройки Updater добавлена категория «Автоматическая
+  установка»: периодический worker при новой сборке запускает
+  `UpdaterService.ACTION_INSTALL_UPDATE` (foreground, streaming или
+  сначала загрузка), после `UPDATED_NEED_REBOOT` — уведомление либо
+  автоматический `PowerManager.reboot()`; обе опции по умолчанию
+  выключены.
+- Исправлен экран настроек Updater на TV: вместо `RegularScaffold`
+  используется `SettingsScaffold` с тем же `fillMaxSize + padding +
+  verticalScroll` layout, что и главный экран, а начальный фокус
+  переносится с левой back-кнопки на первую строку. Раньше ни одна
+  строка не имела фокуса, D-pad не двигал, а OK/Enter нажимал «назад».
+- Расписание проверок Updater стало управляемым: ежедневно,
+  еженедельно (день недели) или ежемесячно (день месяца) в HH:MM;
+  минуты выбираются шагом 5; показывается следующая проверка. Вместо
+  PeriodicWorkRequest используются one-time WorkManager jobs с
+  уникальными именами; пропущенная или неуспешная проверка повторяется
+  примерно через 12 минут после загрузки/ошибки (до 3 попыток), состояние
+  catch-up переживает reboot. Старый `CheckInterval` удалён с миграцией
+  ключа `check_interval`.
+- Улучшены уведомления Updater: после успешной установки всегда
+  показывается «Обновление установлено. Перезагрузите устройство…»;
+  нажатие на уведомление открывает `RebootActivity` с подтверждением
+  перезагрузки (`Перезагрузить сейчас` / `Отмена`), а не сразу Updater.
+  Уведомления об ошибках (загрузка, проверка, установка, сбой после
+  перезагрузки) показываются только при включённой автоустановке; без
+  неё ошибка остаётся в UI Updater и уведомление не создаётся.
+- Исправлена ротация persistent logcat: `los_tv_kmsglog` получил
+  `dir { read getattr remove_name rename }` и capability `sys_nice`.
+  Раньше `logcat.log` рос без ограничения (36.8 МБ вместо 2 МБ × 2),
+  в audit были AVC на `read`/`remove_name`. `dac_override` не выдаётся:
+  он под neverallow, а файл принадлежит root.
+- Собрана OTA `1794623813`: 1 783 751 785 Б, md5
+  `5170c0afd6392e45473f51891419a110`, sha256
+  `b87bd066881ecadd78c19bb2360fa34a192a8798240340119c84c0ad120dcff5`;
+  все build.prop согласованы, `lineage.updater.uri` запечён, policy
+  проверена в `plat_sepolicy.cil`, GUI автоустановки проверен на `e3000n`.
+  OTA ещё не публиковалась и не устанавливалась; для проверки Enforcing её
+  нужно поставить через sideload/recovery (текущая активная сборка содержит
+  старую policy).
+- Собрана и опубликована OTA `1794655508`: 1 783 670 000 Б, md5
+  `355cd7373f2901ed3d514cd281ea0904`, sha256
+  `fc53662d3d1de9676313a5c304272bacb0a13088d83f5f35b886876fdc535fc1`;
+  `lineage.updater.uri=https://atv.kacnep.ru/x86_64_tv.json`. На `e3000n`
+  проверено автообновление по расписанию daily 22:30: worker стартовал
+  в 22:31:28, payload применён `B → A`, `kSuccess` в 22:42:23,
+  `android.cfg` → `SLOT=_a`. После ручного ребута первый старт `_a`
+  (`1794655508`, Enforcing), add-on автоустановлен (Play 53.4.17,
+  microG GMS, YouTube 7.31.301), watchdog записал
+  `input focus: launcher focused, ok`, ANR нет; следующая проверка —
+  2026-11-15 22:30.
+- Собрана OTA `1794662801` (промежуточная): 1 783 670 072 Б, md5
+  `715a5e562ab7b641525e1c9e32050fff`, sha256
+  `49d2729283e71efbc20a2f58e678a2dce0c3c3c2434fa8059fc75eb82cc2107e`;
+  внутри rotation fix `los_tv_kmsglog` и UX уведомлений Updater.
+  На `e3000n` установлена в `_b` (`kSuccess`), успешное уведомление
+  «Обновление установлено…», после ребута ротация `logcat.log.1/.2`
+  по 2 МБ.
+- Финальная OTA для перехода на OTA/Updater — `1794665098`:
+  1 783 669 872 Б, md5 `15824a62cdb13fc2b8562dba8f8bc60a`, sha256
+  `a2d10acac22c22a7228cbf1e8c4e97a59184f2d54bd076571458f6ffcd1b7657`;
+  опубликована, JSON обновлён, `lineage.updater.uri` внутри. ISO
+  `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso` (2 629 386 240 Б,
+  md5 `c301caaf3f1298010adfee350ca5c897`, sha256
+  `eba680705b705010d502750ab095b6e5b14c1833011e6de501dee13f7588f357`)
+  содержит тот же build. Для `intel` подготовлен прямой flash в
+  неактивный `_b` (`deploy/intel-direct-flash-20261115/`, system/kernel/
+  initrd/padded recovery + проверка md5/образа); текущий `_a` остаётся
+  откатом.
+- YouTube payload sync (device tree `3cc6260`): на каждом boot
+  `addon-autorestore.sh` копирует установленный base+split в
+  `/sdcard/los-tv-proprietary` (atomic, sidecar `YouTubeTV.versionCode`
+  = versionCode + sha256 base), если sdcard отсутствует, неполный или
+  старее. Recovery add-on сравнивает `/data/app` и sdcard по sidecar/
+  mtime и выбирает более новый источник; preinstall-apps.sh не ставит
+  APK старее installed (защита от `VERSION_DOWNGRADE`). Исправлен
+  ghost-сценарий intel 2026-11-15 (старый 7.30.302 с sdcard против
+  7.31.301 в PM). В recovery нет `awk` — sha256 извлекается через
+  `cut`; после первого boot-install `preinstall-apps.sh` вызывает
+  sync с `YOUTUBE_SYNC_ONLY=1`, чтобы sdcard обновился сразу, а не
+  только на следующей загрузке (`c21e2ef`).
+- OTA `1794703929`: 1 783 656 108 Б, md5
+  `f49913aa0d7940272812663224ddee56`, sha256
+  `660bf4241ab3cdaf00e8420e46542e1e4c86e8350a8dbb2911d4fd84aae7ac45`;
+  проверена на `e3000n` — recovery-addon без `awk`, preinstall YouTube
+  7.31.301, post-preinstall sync, без `VERSION_DOWNGRADE`.
+- На уже установленной `e3000n` обнаружен цикл `adb reboot sideload`:
+  установленный `/boot/grub/grub.cfg` был старым и не подставлял для
+  `MODE=sideload` `androidboot.mode=recovery` + `force_normal_boot=0`
+  (`BOOT_MODE`). Исправлено на устройстве (бэкап + `grub-script-check`);
+  в `10_blissos` фикс уже есть, но OTA не обновляет `/boot/grub`.
+  Существующие устройства требуют разового патча grub.cfg.
+- Отмечено поведение recovery после sync с апстримом: adb по умолчанию
+  выключен, в Advanced есть пункт включения adb (работает). Пока без
+  изменений в коде.
+
+## 2026-11-14 — фикс Bluetooth mac_permissions и сетевая OTA atv.kacnep.ru
+
+- Исправлен незапускавшийся Bluetooth на release-keys сборке: APK
+  подписан ключом `vendor/lineage-priv/keys/bluetooth.x509.pem`, а
+  `plat_mac_permissions.xml` брал AOSP-ключ, потому что `config.mk`
+  выбирает `MAINLINE_BLUETOOTH_SEPOLICY_DEV_CERTIFICATES` из
+  `build/make/target/product/security/` для `com.android.bt`. Добавлено
+  `PRODUCT_MAINLINE_BLUETOOTH_SEPOLICY_DEV_CERTIFICATES := vendor/lineage-priv/keys`
+  в `keys.mk`; проверять соответствие подписи APK и `seinfo=bluetooth`.
+- Собран и опубликован сетевой OTA на `https://atv.kacnep.ru`:
+  `lineage_x86_64_tv-ota-full-1794611492.zip` (1 783 722 795 Б, sha256
+  `610626a1b3a06b8a04e3b6c51033bd888cd3598907fb643f1d922c4d7f7e1e98`),
+  JSON `x86_64_tv.json`, Range 206. В сборку запечён
+  `lineage.updater.uri`; OTA установлена на `e3000n` в `_b`, Bluetooth
+  включился, пульт подключился. На первом старте был ANR лаунчера из-за
+  preinstall/dexopt (не Java-крэш), процесс перезапустился.
+- OTA-файлы публикуются под уникальным именем (`...-<incremental>.zip`),
+  чтобы не конфликтовать с `Cache-Control: immutable` на `/ota/*`.
+- Ограничение x86-схемы: payload обновляет только
+  `initrd/kernel/ramdisk-recovery/system`. `system_ext`/`product` здесь —
+  каталоги внутри `system.img`, а не отдельные A/B-разделы, поэтому в
+  `AB_OTA_PARTITIONS` их добавлять нельзя; policy и build.prop нужно
+  держать в `system` (исправлено в следующей сборке).
+- Косметика: в Updater кнопка «Перезапуск» переименована в
+  «Перезагрузка»; перед автоматическим reboot в recovery для add-on
+  показывается полноэкранное сообщение «Перезагружаю для установки
+  проприетарных компонентов» с паузой 4 с (`RebootActivity` в
+  `LosTvAddon`, вызов из `addon-autorestore.sh`). Собраны только APK
+  `Updater`/`LosTvAddon`; ISO/OTA не пересобирались.
+
 ## 2026-11-13 — userdebug с собственными ключами; e3000n на новой сборке
 
 - Добавлена поддержка собственных ключей: `vendor/lineage-priv/keys`

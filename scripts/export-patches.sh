@@ -16,6 +16,7 @@ build/release
 system/core
 frameworks/base
 packages/apps/TvSettings
+packages/apps/Updater
 device/lineage/sepolicy
 packages/modules/Bluetooth
 packages/providers/ContactsProvider

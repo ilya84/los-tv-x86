@@ -1,0 +1,1839 @@
+From 466259968216f01527e888d7e9c23e5960548937 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 14 Nov 2026 12:32:33 +1000
+Subject: [PATCH] los-tv: auto-install, TV settings focus, configurable check
+ schedule
+
+Add an opt-in auto-install mode to the existing Updater settings: the
+periodic check worker downloads/streams the newest build, the service
+promotes itself to foreground for background installs, and
+UPDATED_NEED_REBOOT either posts the usual notification or reboots when
+auto-reboot is enabled. Both settings default to off.
+
+Fix the Updater settings screen on TV: use SettingsScaffold with the same
+fillMaxSize + padding + verticalScroll layout as the main Updates screen,
+and move initial focus from the top-left back button to the first
+preference. Without this no preference had focus and OK/Enter activated
+Back instead of the selected setting.
+
+Replace the periodic "every N days" check with a configurable schedule:
+daily, weekly (weekday) or monthly (day of month) at HH:MM, with minutes
+in 5-minute steps, a next-run summary and a catch-up note. WorkManager
+one-time work is scheduled at the next run with unique generation names;
+a missed or failed check is retried about 12 minutes after boot/failure
+(up to 3 attempts), and pending catch-up state survives reboot. Remove
+the old CheckInterval model, migrating the legacy check_interval key.
+
+Improve update notifications: a successful install always posts
+"update installed, reboot required"; tapping the notification opens a
+RebootActivity confirmation dialog instead of just the Updater screen.
+Failure notifications (download error, verification failed, install
+failed, post-reboot install failure) are posted only when auto-install
+is enabled; with auto-install off the error stays in the Updater UI and
+tapping the notification (when present) opens Updater.
+
+Change-Id: Ia4b15cfc610cb42e4a63a790531f2e196d96d4f1
+---
+ app/src/main/AndroidManifest.xml              |  18 +
+ .../org/lineageos/updater/RebootActivity.java |  37 ++
+ .../lineageos/updater/UpdaterReceiver.java    |  14 +-
+ .../updater/controller/UpdaterController.java |  15 +
+ .../updater/controller/UpdaterService.java    | 107 +++++-
+ .../lineageos/updater/data/CheckInterval.kt   |  22 --
+ .../lineageos/updater/data/CheckSchedule.kt   |  35 ++
+ .../updater/data/UpdatesRepository.kt         |  40 ++-
+ .../updater/data/UserPreferencesRepository.kt | 149 +++++++-
+ .../org/lineageos/updater/misc/Utils.java     |   8 +-
+ .../updater/preferences/PreferencesScreen.kt  | 232 +++++++++++--
+ .../updatescheck/UpdateCheckScheduler.kt      | 317 ++++++++++++++++++
+ .../updatescheck/UpdatesCheckWorker.kt        | 199 +++++++----
+ app/src/main/res/values-ru/strings.xml        |  26 +-
+ app/src/main/res/values/strings.xml           |  28 ++
+ 15 files changed, 1116 insertions(+), 131 deletions(-)
+ create mode 100644 app/src/main/java/org/lineageos/updater/RebootActivity.java
+ delete mode 100644 app/src/main/java/org/lineageos/updater/data/CheckInterval.kt
+ create mode 100644 app/src/main/java/org/lineageos/updater/data/CheckSchedule.kt
+ create mode 100644 app/src/main/java/org/lineageos/updater/updatescheck/UpdateCheckScheduler.kt
+
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 1cfa4d1..22b6d6c 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -4,6 +4,7 @@
+      SPDX-License-Identifier: Apache-2.0
+ -->
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:tools="http://schemas.android.com/tools"
+     package="org.lineageos.updater"
+     android:versionCode="1">
+ 
+@@ -30,6 +31,13 @@
+         android:theme="@style/Theme.SpaLib"
+         android:usesCleartextTraffic="false">
+ 
++        <activity
++            android:name=".RebootActivity"
++            android:excludeFromRecents="true"
++            android:exported="false"
++            android:launchMode="singleTop"
++            android:theme="@android:style/Theme.DeviceDefault.Dialog.Alert" />
++
+         <activity
+             android:name=".preferences.PreferencesActivity"
+             android:exported="false" />
+@@ -66,6 +74,16 @@
+                 android:value="updater"/>
+         </service>
+ 
++        <!-- WorkManager's foreground service needs an explicit type on Android 14+. -->
++        <service
++            android:name="androidx.work.impl.foreground.SystemForegroundService"
++            android:foregroundServiceType="specialUse"
++            android:exported="false"
++            tools:node="merge">
++            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
++                android:value="updater"/>
++        </service>
++
+         <receiver android:name=".UpdaterReceiver" android:exported="false">
+             <intent-filter>
+                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
+diff --git a/app/src/main/java/org/lineageos/updater/RebootActivity.java b/app/src/main/java/org/lineageos/updater/RebootActivity.java
+new file mode 100644
+index 0000000..799232e
+--- /dev/null
++++ b/app/src/main/java/org/lineageos/updater/RebootActivity.java
+@@ -0,0 +1,37 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++package org.lineageos.updater;
++
++import android.app.Activity;
++import android.app.AlertDialog;
++import android.os.Bundle;
++import android.os.PowerManager;
++
++/**
++ * Small confirmation dialog shown when the user taps the "update installed"
++ * notification. Tapping the notification itself should not reboot the device
++ * immediately; the user explicitly chooses "Reboot" in this dialog.
++ */
++public class RebootActivity extends Activity {
++
++    @Override
++    protected void onCreate(Bundle savedInstanceState) {
++        super.onCreate(savedInstanceState);
++
++        new AlertDialog.Builder(this)
++                .setTitle(R.string.reboot_prompt_title)
++                .setMessage(R.string.reboot_prompt_message)
++                .setPositiveButton(R.string.reboot_now, (dialog, which) -> {
++                    PowerManager powerManager = getSystemService(PowerManager.class);
++                    if (powerManager != null) {
++                        powerManager.reboot(null);
++                    }
++                    finish();
++                })
++                .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
++                .setOnCancelListener(dialog -> finish())
++                .show();
++    }
++}
+diff --git a/app/src/main/java/org/lineageos/updater/UpdaterReceiver.java b/app/src/main/java/org/lineageos/updater/UpdaterReceiver.java
+index d143b02..cc667da 100644
+--- a/app/src/main/java/org/lineageos/updater/UpdaterReceiver.java
++++ b/app/src/main/java/org/lineageos/updater/UpdaterReceiver.java
+@@ -16,7 +16,7 @@ import org.lineageos.updater.controller.UpdaterService;
+ import org.lineageos.updater.deviceinfo.DeviceInfoUtils;
+ import org.lineageos.updater.misc.Constants;
+ import org.lineageos.updater.misc.Utils;
+-import org.lineageos.updater.updatescheck.UpdatesCheckWorker;
++import org.lineageos.updater.updatescheck.UpdateCheckScheduler;
+ 
+ public class UpdaterReceiver extends BroadcastReceiver {
+ 
+@@ -41,7 +41,7 @@ public class UpdaterReceiver extends BroadcastReceiver {
+             pm.reboot(null);
+         } else if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+             Utils.removeUncryptFiles(Utils.getDownloadPath(context));
+-            UpdatesCheckWorker.schedulePeriodicCheck(context);
++            UpdateCheckScheduler.ensureScheduledAsync(context);
+ 
+             SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(context);
+             String downloadId = pref.getString(Constants.PREF_NEEDS_REBOOT_ID, null);
+@@ -57,9 +57,13 @@ public class UpdaterReceiver extends BroadcastReceiver {
+             if (!pref.getBoolean(Constants.PREF_INSTALL_NOTIFIED, false)
+                     && !isUpdateSuccessful(context)) {
+                 pref.edit().putBoolean(Constants.PREF_INSTALL_NOTIFIED, true).apply();
+-                long installTimestamp = pref.getLong(Constants.PREF_INSTALL_NEW_TIMESTAMP, 0);
+-                ((UpdaterApplication) context.getApplicationContext()).getNotificationHelper()
+-                        .showUpdateFailedNotification(installTimestamp);
++                UpdaterApplication application =
++                        (UpdaterApplication) context.getApplicationContext();
++                if (application.getUserPreferencesRepository().getAutoInstallBlocking()) {
++                    long installTimestamp = pref.getLong(Constants.PREF_INSTALL_NEW_TIMESTAMP, 0);
++                    application.getNotificationHelper()
++                            .showUpdateFailedNotification(installTimestamp);
++                }
+             }
+         }
+     }
+diff --git a/app/src/main/java/org/lineageos/updater/controller/UpdaterController.java b/app/src/main/java/org/lineageos/updater/controller/UpdaterController.java
+index 9b85612..974a431 100644
+--- a/app/src/main/java/org/lineageos/updater/controller/UpdaterController.java
++++ b/app/src/main/java/org/lineageos/updater/controller/UpdaterController.java
+@@ -45,6 +45,7 @@ public class UpdaterController {
+ 
+     private final Context mContext;
+     private final UpdatesLocalDataSource mUpdatesLocalDataSource;
++    private final UserPreferencesRepository mUserPreferencesRepository;
+ 
+     private final PowerManager.WakeLock mWakeLock;
+ 
+@@ -66,6 +67,7 @@ public class UpdaterController {
+     private UpdaterController(Context context, UserPreferencesRepository userPreferencesRepository) {
+         mUpdatesLocalDataSource =
+                 new UpdatesLocalDataSource(UpdatesDatabase.getInstance(context).updateDao());
++        mUserPreferencesRepository = userPreferencesRepository;
+         mDownloadRoot = Utils.getDownloadPath(context);
+         PowerManager powerManager = context.getSystemService(PowerManager.class);
+         mWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Updater:wakelock");
+@@ -266,6 +268,7 @@ public class UpdaterController {
+                         entry.mUpdate = entry.mUpdate.withStatus(UpdateStatus.VERIFIED);
+                     }
+                     mUpdatesLocalDataSource.changeStatus(downloadId, UpdateStatus.VERIFIED);
++                    maybeTriggerAutoInstall(downloadId);
+                 } else {
+                     mUpdatesLocalDataSource.removeUpdate(downloadId);
+                     synchronized (entry) {
+@@ -281,6 +284,18 @@ public class UpdaterController {
+         }).start();
+     }
+ 
++    private void maybeTriggerAutoInstall(String downloadId) {
++        if (!mUserPreferencesRepository.getAutoInstallBlocking()) {
++            return;
++        }
++        if (!downloadId.equals(mUserPreferencesRepository.getPendingAutoInstallIdBlocking())) {
++            return;
++        }
++        mUserPreferencesRepository.setPendingAutoInstallIdBlocking(null);
++        Log.i(TAG, "Auto install: download verified, starting installation");
++        Utils.triggerUpdate(mContext, downloadId, true);
++    }
++
+     private boolean verifyPackage(File file) {
+         try {
+             android.os.RecoverySystem.verifyPackage(file, null, null);
+diff --git a/app/src/main/java/org/lineageos/updater/controller/UpdaterService.java b/app/src/main/java/org/lineageos/updater/controller/UpdaterService.java
+index 58eb810..3688d18 100644
+--- a/app/src/main/java/org/lineageos/updater/controller/UpdaterService.java
++++ b/app/src/main/java/org/lineageos/updater/controller/UpdaterService.java
+@@ -15,6 +15,7 @@ import android.content.pm.ServiceInfo;
+ import android.os.Binder;
+ import android.os.Bundle;
+ import android.os.IBinder;
++import android.os.PowerManager;
+ import android.os.ServiceSpecificException;
+ import android.text.format.Formatter;
+ import android.util.Log;
+@@ -22,6 +23,7 @@ import android.util.Log;
+ import androidx.core.app.NotificationCompat;
+ 
+ import org.lineageos.updater.R;
++import org.lineageos.updater.RebootActivity;
+ import org.lineageos.updater.UpdaterApplication;
+ import org.lineageos.updater.UpdaterReceiver;
+ import org.lineageos.updater.UpdatesActivity;
+@@ -47,6 +49,7 @@ public class UpdaterService extends Service {
+     public static final String EXTRA_DOWNLOAD_CONTROL = "extra_download_control";
+     public static final String ACTION_INSTALL_UPDATE = "action_install_update";
+     public static final String ACTION_INSTALL_STOP = "action_install_stop";
++    public static final String EXTRA_AUTO_INSTALL = "extra_auto_install";
+ 
+     public static final String ACTION_INSTALL_SUSPEND = "action_install_suspend";
+     public static final String ACTION_INSTALL_RESUME = "action_install_resume";
+@@ -66,6 +69,7 @@ public class UpdaterService extends Service {
+     private NotificationCompat.Builder mNotificationBuilder;
+     private NotificationManager mNotificationManager;
+     private NotificationCompat.BigTextStyle mNotificationStyle;
++    private PendingIntent mUpdatesPendingIntent;
+ 
+     private UpdaterController mUpdaterController;
+     private UserPreferencesRepository mUserPreferencesRepository;
+@@ -87,9 +91,9 @@ public class UpdaterService extends Service {
+         mNotificationBuilder.setStyle(mNotificationStyle);
+ 
+         Intent notificationIntent = new Intent(this, UpdatesActivity.class);
+-        PendingIntent intent = PendingIntent.getActivity(this, 0, notificationIntent,
++        mUpdatesPendingIntent = PendingIntent.getActivity(this, 0, notificationIntent,
+                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+-        mNotificationBuilder.setContentIntent(intent);
++        mNotificationBuilder.setContentIntent(mUpdatesPendingIntent);
+ 
+         mBroadcastReceiver = new BroadcastReceiver() {
+             @Override
+@@ -184,19 +188,45 @@ public class UpdaterService extends Service {
+             }
+         } else if (ACTION_INSTALL_UPDATE.equals(intent.getAction())) {
+             String downloadId = intent.getStringExtra(EXTRA_DOWNLOAD_ID);
++            boolean autoInstall = intent.getBooleanExtra(EXTRA_AUTO_INSTALL, false);
+             Update update = mUpdaterController.getUpdate(downloadId);
+             if (update == null) {
+                 Log.e(TAG, "Update not found: " + downloadId);
++                startForegroundForInstall(null);
++                stopForeground(STOP_FOREGROUND_DETACH);
++                stopSelf();
+                 return START_NOT_STICKY;
+             }
++
++            // The service may have been started with startForegroundService() from
++            // the background checker. Promote it before doing any slow work.
++            startForegroundForInstall(update);
++
+             if (!InstallUtils.canInstall(update)) {
+                 Log.e(TAG, "Update blocked: " + downloadId);
++                stopForeground(STOP_FOREGROUND_DETACH);
++                stopSelf();
+                 return START_NOT_STICKY;
+             }
+             boolean canStreamUpdate = InstallUtils.canStreamUpdate(update,
+                     mUserPreferencesRepository.getStreamUpdatesBlocking());
+             if (!canStreamUpdate && !update.getStatus().hasVerifiedPackage()) {
+-                throw new IllegalArgumentException(update.getDownloadId() + " is not verified");
++                if (autoInstall) {
++                    Log.i(TAG, "Update is not downloaded yet, downloading first");
++                    mUserPreferencesRepository.setPendingAutoInstallIdBlocking(downloadId);
++                    mUpdaterController.addUpdate(update, true);
++                    if (update.getStatus() == UpdateStatus.PAUSED ||
++                            update.getStatus() == UpdateStatus.PAUSED_ERROR) {
++                        mUpdaterController.resumeDownload(downloadId);
++                    } else {
++                        mUpdaterController.startDownload(downloadId);
++                    }
++                    return START_NOT_STICKY;
++                }
++                Log.e(TAG, "Update is not verified: " + downloadId);
++                stopForeground(STOP_FOREGROUND_DETACH);
++                stopSelf();
++                return START_NOT_STICKY;
+             }
+             try {
+                 if (canStreamUpdate || new OtaMetadataParser(update.getFile()).isABUpdate()) {
+@@ -259,7 +289,30 @@ public class UpdaterService extends Service {
+         }
+     }
+ 
++    private void startForegroundForInstall(Update update) {
++        setUpdatesContentIntent();
++        if (update != null) {
++            setNotificationTitle(update);
++        } else {
++            mNotificationBuilder.setContentTitle(getString(R.string.display_name));
++        }
++        mNotificationBuilder.mActions.clear();
++        mNotificationBuilder.setStyle(mNotificationStyle);
++        mNotificationBuilder.setSmallIcon(R.drawable.ic_notification);
++        mNotificationBuilder.setProgress(0, 0, true);
++        mNotificationStyle.setSummaryText(null);
++        String text = getString(R.string.installing_update);
++        mNotificationStyle.bigText(text);
++        mNotificationBuilder.setTicker(text);
++        mNotificationBuilder.setOngoing(true);
++        mNotificationBuilder.setAutoCancel(false);
++        startForeground(NOTIFICATION_ID, mNotificationBuilder.build(),
++                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
++        mNotificationManager.notify(NOTIFICATION_ID, mNotificationBuilder.build());
++    }
++
+     private void handleUpdateStatusChange(Update update) {
++        setUpdatesContentIntent();
+         switch (update.getStatus()) {
+             case DELETED: {
+                 stopForeground(STOP_FOREGROUND_DETACH);
+@@ -324,6 +377,10 @@ public class UpdaterService extends Service {
+                 break;
+             }
+             case PAUSED_ERROR: {
++                if (!shouldNotifyFailure()) {
++                    suppressFailureNotification();
++                    break;
++                }
+                 stopForeground(STOP_FOREGROUND_DETACH);
+                 int progress = update.getProgress();
+                 // In case we pause before the first progress update
+@@ -374,6 +431,10 @@ public class UpdaterService extends Service {
+                 break;
+             }
+             case VERIFICATION_FAILED: {
++                if (!shouldNotifyFailure()) {
++                    suppressFailureNotification();
++                    break;
++                }
+                 stopForeground(STOP_FOREGROUND_DETACH);
+                 mNotificationBuilder.mActions.clear();
+                 mNotificationBuilder.setStyle(null);
+@@ -407,12 +468,22 @@ public class UpdaterService extends Service {
+                 break;
+             }
+             case UPDATED_NEED_REBOOT: {
++                if (mUserPreferencesRepository.isAutoRebootEnabledBlocking()) {
++                    Log.i(TAG, "Auto-reboot after successful update");
++                    stopForeground(STOP_FOREGROUND_DETACH);
++                    PowerManager powerManager = getSystemService(PowerManager.class);
++                    if (powerManager != null) {
++                        powerManager.reboot(null);
++                        break;
++                    }
++                }
+                 stopForeground(STOP_FOREGROUND_DETACH);
+                 mNotificationBuilder.mActions.clear();
++                mNotificationBuilder.setContentIntent(getRebootPromptPendingIntent());
+                 mNotificationBuilder.setStyle(null);
+                 mNotificationBuilder.setSmallIcon(R.drawable.ic_notification);
+                 mNotificationBuilder.setProgress(0, 0, false);
+-                String text = getString(R.string.installing_update_finished);
++                String text = getString(R.string.update_installed_reboot_notification);
+                 mNotificationBuilder.setContentText(text);
+                 mNotificationBuilder.addAction(R.drawable.ic_notification,
+                         getString(R.string.reboot),
+@@ -426,6 +497,10 @@ public class UpdaterService extends Service {
+                 break;
+             }
+             case INSTALLATION_FAILED: {
++                if (!shouldNotifyFailure()) {
++                    suppressFailureNotification();
++                    break;
++                }
+                 stopForeground(STOP_FOREGROUND_DETACH);
+                 mNotificationBuilder.setStyle(null);
+                 mNotificationBuilder.setSmallIcon(android.R.drawable.stat_sys_warning);
+@@ -464,6 +539,7 @@ public class UpdaterService extends Service {
+     }
+ 
+     private void handleDownloadProgressChange(Update update) {
++        setUpdatesContentIntent();
+         int progress = update.getProgress();
+         mNotificationBuilder.setProgress(100, progress, false);
+ 
+@@ -481,6 +557,7 @@ public class UpdaterService extends Service {
+     }
+ 
+     private void handleInstallProgress(Update update) {
++        setUpdatesContentIntent();
+         setNotificationTitle(update);
+         int progress = update.getInstallProgress();
+         mNotificationBuilder.setProgress(100, progress, false);
+@@ -503,6 +580,28 @@ public class UpdaterService extends Service {
+         mNotificationBuilder.setContentTitle(buildInfo);
+     }
+ 
++    private void setUpdatesContentIntent() {
++        mNotificationBuilder.setContentIntent(mUpdatesPendingIntent);
++    }
++
++    private PendingIntent getRebootPromptPendingIntent() {
++        Intent intent = new Intent(this, RebootActivity.class);
++        return PendingIntent.getActivity(this, 1, intent,
++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
++    }
++
++    private boolean shouldNotifyFailure() {
++        return mUserPreferencesRepository.getAutoInstallBlocking();
++    }
++
++    private void suppressFailureNotification() {
++        Log.i(TAG, "Auto-install disabled; suppressing failure notification");
++        stopForeground(STOP_FOREGROUND_DETACH);
++        mNotificationBuilder.mActions.clear();
++        mNotificationManager.cancel(NOTIFICATION_ID);
++        tryStopSelf();
++    }
++
+     private PendingIntent getResumePendingIntent(String downloadId) {
+         final Intent intent = new Intent(this, UpdaterService.class);
+         intent.setAction(ACTION_DOWNLOAD_CONTROL);
+diff --git a/app/src/main/java/org/lineageos/updater/data/CheckInterval.kt b/app/src/main/java/org/lineageos/updater/data/CheckInterval.kt
+deleted file mode 100644
+index 7a5e1e6..0000000
+--- a/app/src/main/java/org/lineageos/updater/data/CheckInterval.kt
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/*
+- * SPDX-FileCopyrightText: The LineageOS Project
+- * SPDX-License-Identifier: Apache-2.0
+- */
+-
+-package org.lineageos.updater.data
+-
+-import kotlin.time.Duration
+-import kotlin.time.Duration.Companion.days
+-
+-enum class CheckInterval(val duration: Duration, val storageValue: String) {
+-    DAILY(1.days, "daily"),
+-    WEEKLY(7.days, "weekly"),
+-    MONTHLY(30.days, "monthly");
+-
+-    companion object {
+-        val default = WEEKLY
+-
+-        fun fromStorageValue(value: String?) =
+-            entries.find { it.storageValue == value } ?: default
+-    }
+-}
+diff --git a/app/src/main/java/org/lineageos/updater/data/CheckSchedule.kt b/app/src/main/java/org/lineageos/updater/data/CheckSchedule.kt
+new file mode 100644
+index 0000000..b3f9fc8
+--- /dev/null
++++ b/app/src/main/java/org/lineageos/updater/data/CheckSchedule.kt
+@@ -0,0 +1,35 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package org.lineageos.updater.data
++
++import java.time.DayOfWeek
++
++enum class CheckScheduleMode(val storageValue: String) {
++    DAILY("daily"),
++    WEEKLY("weekly"),
++    MONTHLY("monthly");
++
++    companion object {
++        val default = WEEKLY
++
++        fun fromStorageValue(value: String?) =
++            entries.find { it.storageValue == value } ?: default
++    }
++}
++
++data class CheckSchedule(
++    val mode: CheckScheduleMode = CheckScheduleMode.default,
++    val hour: Int = 3,
++    val minute: Int = 0,
++    val dayOfWeek: DayOfWeek = DayOfWeek.SATURDAY,
++    val dayOfMonth: Int = 1,
++) {
++    init {
++        require(hour in 0..23)
++        require(minute in 0..59)
++        require(dayOfMonth in 1..31)
++    }
++}
+diff --git a/app/src/main/java/org/lineageos/updater/data/UpdatesRepository.kt b/app/src/main/java/org/lineageos/updater/data/UpdatesRepository.kt
+index c9e2350..24e9890 100644
+--- a/app/src/main/java/org/lineageos/updater/data/UpdatesRepository.kt
++++ b/app/src/main/java/org/lineageos/updater/data/UpdatesRepository.kt
+@@ -15,11 +15,17 @@ import org.lineageos.updater.data.source.network.UpdatesNetworkDataSource
+ import org.lineageos.updater.data.source.network.toUpdate
+ import org.lineageos.updater.deviceinfo.DeviceInfoUtils
+ import org.lineageos.updater.notifications.NotificationHelper
++import org.lineageos.updater.util.InstallUtils
+ import org.lineageos.updater.util.NetworkMonitor
+ import java.io.IOException
+ 
+ private const val TAG = "UpdatesRepository"
+ 
++data class FetchResult(
++    val fetchedAt: Long,
++    val updates: List<Update>,
++)
++
+ class UpdatesRepository(
+     private val networkMonitor: NetworkMonitor,
+     private val notificationHelper: NotificationHelper,
+@@ -37,7 +43,9 @@ class UpdatesRepository(
+      * @throws IOException on network or HTTP errors.
+      * @throws SerializationException if the response cannot be parsed.
+      */
+-    suspend fun fetchUpdates(): Long? {
++    suspend fun fetchUpdates(): Long? = fetchUpdatesResult()?.fetchedAt
++
++    suspend fun fetchUpdatesResult(): FetchResult? {
+         if (!networkMonitor.currentNetworkState.isOnline) return null
+ 
+         val localUpdates = withContext(Dispatchers.IO) {
+@@ -57,7 +65,9 @@ class UpdatesRepository(
+             networkDataSource.fetchUpdates().map { it.toUpdate() }.filter { filterUpdates(it) }
+         }
+ 
+-        if (networkUpdates.isEmpty()) return System.currentTimeMillis()
++        if (networkUpdates.isEmpty()) {
++            return FetchResult(System.currentTimeMillis(), emptyList())
++        }
+ 
+         val networkIds = networkUpdates.map { it.downloadId }.toSet()
+ 
+@@ -88,7 +98,21 @@ class UpdatesRepository(
+             }
+         }
+ 
+-        return System.currentTimeMillis()
++        return FetchResult(System.currentTimeMillis(), networkUpdates)
++    }
++
++    /**
++     * Returns the newest update that can be installed by the automatic installer.
++     * Updates that are already installing or waiting for a reboot are ignored.
++     */
++    suspend fun getAutoInstallCandidate(): Update? = withContext(Dispatchers.IO) {
++        localDataSource.getUpdates()
++            .asSequence()
++            .filter { it.downloadUrl != null }
++            .map { it.copy(isAvailableOnline = true) }
++            .filter { InstallUtils.canInstall(it) }
++            .filter { it.status in AUTO_INSTALLABLE_STATUSES }
++            .maxByOrNull { it.timestamp }
+     }
+ 
+     private fun filterUpdates(update: Update): Boolean {
+@@ -111,4 +135,14 @@ class UpdatesRepository(
+         }
+         return true
+     }
++
++    companion object {
++        private val AUTO_INSTALLABLE_STATUSES = setOf(
++            UpdateStatus.UNKNOWN,
++            UpdateStatus.UPDATE_AVAILABLE,
++            UpdateStatus.PAUSED,
++            UpdateStatus.PAUSED_ERROR,
++            UpdateStatus.VERIFIED,
++        )
++    }
+ }
+diff --git a/app/src/main/java/org/lineageos/updater/data/UserPreferencesRepository.kt b/app/src/main/java/org/lineageos/updater/data/UserPreferencesRepository.kt
+index d4b71ba..52cf8f0 100644
+--- a/app/src/main/java/org/lineageos/updater/data/UserPreferencesRepository.kt
++++ b/app/src/main/java/org/lineageos/updater/data/UserPreferencesRepository.kt
+@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.Preferences
+ import androidx.datastore.preferences.core.booleanPreferencesKey
+ import androidx.datastore.preferences.core.edit
+ import androidx.datastore.preferences.core.emptyPreferences
++import androidx.datastore.preferences.core.intPreferencesKey
++import androidx.datastore.preferences.core.longPreferencesKey
+ import androidx.datastore.preferences.core.stringPreferencesKey
+ import androidx.datastore.preferences.preferencesDataStore
+ import kotlinx.coroutines.flow.Flow
+@@ -20,11 +22,14 @@ import kotlinx.coroutines.flow.first
+ import kotlinx.coroutines.flow.map
+ import kotlinx.coroutines.runBlocking
+ import org.lineageos.updater.deviceinfo.DeviceInfoUtils
+-import org.lineageos.updater.updatescheck.UpdatesCheckWorker
++import org.lineageos.updater.updatescheck.UpdateCheckScheduler
+ import java.io.IOException
++import java.time.DayOfWeek
+ 
+ private const val USER_PREFERENCES_DATASTORE_NAME = "user_prefs"
+ 
++private fun normalizeMinute(value: Int) = ((value / 5) * 5).coerceIn(0, 55)
++
+ private val Context.userPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
+     name = USER_PREFERENCES_DATASTORE_NAME,
+     corruptionHandler = ReplaceFileCorruptionHandler {
+@@ -35,8 +40,22 @@ private val Context.userPreferencesDataStore: DataStore<Preferences> by preferen
+ private object UserPreferencesKeys {
+     val AB_PERF_MODE = booleanPreferencesKey("ab_perf_mode")
+     val AUTO_DELETE = booleanPreferencesKey("auto_delete_updates")
++    val AUTO_INSTALL = booleanPreferencesKey("auto_install_updates")
++    val AUTO_REBOOT = booleanPreferencesKey("auto_reboot_after_update")
+     val CHECK_INTERVAL = stringPreferencesKey("check_interval")
++    val CHECK_SCHEDULE_MODE = stringPreferencesKey("check_schedule_mode")
++    val CHECK_HOUR = intPreferencesKey("check_hour")
++    val CHECK_MINUTE = intPreferencesKey("check_minute")
++    val CHECK_DAY_OF_WEEK = stringPreferencesKey("check_day_of_week")
++    val CHECK_DAY_OF_MONTH = intPreferencesKey("check_day_of_month")
++    val LAST_SCHEDULED_AT = longPreferencesKey("last_scheduled_at")
++    val LAST_SCHEDULED_CATCH_UP = booleanPreferencesKey("last_scheduled_catch_up")
++    val LAST_SCHEDULED_ATTEMPT = intPreferencesKey("last_scheduled_attempt")
++    val LAST_SCHEDULED_WORK_NAME = stringPreferencesKey("last_scheduled_work_name")
++    val LAST_ATTEMPT_AT = longPreferencesKey("last_attempt_at")
++    val LAST_SUCCESS_AT = longPreferencesKey("last_success_at")
+     val METERED_NETWORK_WARNING = booleanPreferencesKey("metered_network_warning")
++    val PENDING_AUTO_INSTALL_ID = stringPreferencesKey("pending_auto_install_id")
+     val PERIODIC_CHECK_ENABLED = booleanPreferencesKey("periodic_check_enabled")
+     val STREAM_UPDATES = booleanPreferencesKey("stream_updates")
+ }
+@@ -60,6 +79,58 @@ class UserPreferencesRepository(context: Context) {
+         userPreferences.edit { it[UserPreferencesKeys.AB_PERF_MODE] = value }
+     }
+ 
++    val autoInstallFlow: Flow<Boolean> = userPreferencesFlow.map { preferences ->
++        preferences[UserPreferencesKeys.AUTO_INSTALL] ?: false
++    }
++
++    suspend fun getAutoInstall(): Boolean = autoInstallFlow.first()
++
++    fun getAutoInstallBlocking(): Boolean = runBlocking { getAutoInstall() }
++
++    suspend fun setAutoInstall(value: Boolean) {
++        userPreferences.edit { preferences ->
++            preferences[UserPreferencesKeys.AUTO_INSTALL] = value
++            if (!value) {
++                preferences.remove(UserPreferencesKeys.PENDING_AUTO_INSTALL_ID)
++            }
++        }
++    }
++
++    val autoRebootFlow: Flow<Boolean> = userPreferencesFlow.map { preferences ->
++        preferences[UserPreferencesKeys.AUTO_REBOOT] ?: false
++    }
++
++    suspend fun getAutoReboot(): Boolean = autoRebootFlow.first()
++
++    fun getAutoRebootBlocking(): Boolean = runBlocking { getAutoReboot() }
++
++    suspend fun setAutoReboot(value: Boolean) {
++        userPreferences.edit { it[UserPreferencesKeys.AUTO_REBOOT] = value }
++    }
++
++    fun isAutoRebootEnabledBlocking(): Boolean = runBlocking {
++        getAutoInstall() && getAutoReboot()
++    }
++
++    suspend fun getPendingAutoInstallId(): String? =
++        userPreferencesFlow.first()[UserPreferencesKeys.PENDING_AUTO_INSTALL_ID]
++
++    fun getPendingAutoInstallIdBlocking(): String? = runBlocking { getPendingAutoInstallId() }
++
++    suspend fun setPendingAutoInstallId(downloadId: String?) {
++        userPreferences.edit { preferences ->
++            if (downloadId == null) {
++                preferences.remove(UserPreferencesKeys.PENDING_AUTO_INSTALL_ID)
++            } else {
++                preferences[UserPreferencesKeys.PENDING_AUTO_INSTALL_ID] = downloadId
++            }
++        }
++    }
++
++    fun setPendingAutoInstallIdBlocking(downloadId: String?) {
++        runBlocking { setPendingAutoInstallId(downloadId) }
++    }
++
+     val autoDeleteFlow: Flow<Boolean> = userPreferencesFlow.map { preferences ->
+         preferences[UserPreferencesKeys.AUTO_DELETE] ?: true
+     }
+@@ -84,19 +155,79 @@ class UserPreferencesRepository(context: Context) {
+         userPreferences.edit { it[UserPreferencesKeys.METERED_NETWORK_WARNING] = value }
+     }
+ 
+-    val checkIntervalFlow: Flow<CheckInterval> = userPreferencesFlow.map { preferences ->
+-        CheckInterval.fromStorageValue(preferences[UserPreferencesKeys.CHECK_INTERVAL])
++    val checkScheduleFlow: Flow<CheckSchedule> = userPreferencesFlow.map { preferences ->
++        CheckSchedule(
++            mode = CheckScheduleMode.fromStorageValue(
++                preferences[UserPreferencesKeys.CHECK_SCHEDULE_MODE]
++                    ?: preferences[UserPreferencesKeys.CHECK_INTERVAL]
++            ),
++            hour = (preferences[UserPreferencesKeys.CHECK_HOUR] ?: 3).coerceIn(0, 23),
++            minute = normalizeMinute(preferences[UserPreferencesKeys.CHECK_MINUTE] ?: 0),
++            dayOfWeek = preferences[UserPreferencesKeys.CHECK_DAY_OF_WEEK]
++                ?.let { runCatching { DayOfWeek.valueOf(it) }.getOrNull() }
++                ?: DayOfWeek.SATURDAY,
++            dayOfMonth = (preferences[UserPreferencesKeys.CHECK_DAY_OF_MONTH] ?: 1)
++                .coerceIn(1, 31),
++        )
+     }
+ 
+-    suspend fun getCheckInterval(): CheckInterval = checkIntervalFlow.first()
++    suspend fun getCheckSchedule(): CheckSchedule = checkScheduleFlow.first()
+ 
+-    suspend fun setCheckInterval(interval: CheckInterval) {
+-        userPreferences.edit { it[UserPreferencesKeys.CHECK_INTERVAL] = interval.storageValue }
++    suspend fun setCheckSchedule(schedule: CheckSchedule) {
++        userPreferences.edit { preferences ->
++            preferences[UserPreferencesKeys.CHECK_SCHEDULE_MODE] = schedule.mode.storageValue
++            preferences[UserPreferencesKeys.CHECK_HOUR] = schedule.hour
++            preferences[UserPreferencesKeys.CHECK_MINUTE] = normalizeMinute(schedule.minute)
++            preferences[UserPreferencesKeys.CHECK_DAY_OF_WEEK] = schedule.dayOfWeek.name
++            preferences[UserPreferencesKeys.CHECK_DAY_OF_MONTH] = schedule.dayOfMonth
++        }
+         if (getPeriodicCheckEnabled()) {
+-            UpdatesCheckWorker.reschedulePeriodicCheck(appContext)
++            UpdateCheckScheduler.reschedule(appContext)
+         }
+     }
+ 
++    suspend fun getLastScheduledAt(): Long =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_SCHEDULED_AT] ?: 0L
++
++    suspend fun setLastScheduledAt(value: Long) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_SCHEDULED_AT] = value }
++    }
++
++    suspend fun getLastScheduledCatchUp(): Boolean =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_SCHEDULED_CATCH_UP] ?: false
++
++    suspend fun setLastScheduledCatchUp(value: Boolean) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_SCHEDULED_CATCH_UP] = value }
++    }
++
++    suspend fun getLastScheduledAttempt(): Int =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_SCHEDULED_ATTEMPT] ?: 0
++
++    suspend fun setLastScheduledAttempt(value: Int) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_SCHEDULED_ATTEMPT] = value }
++    }
++
++    suspend fun getLastScheduledWorkName(): String? =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_SCHEDULED_WORK_NAME]
++
++    suspend fun setLastScheduledWorkName(value: String) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_SCHEDULED_WORK_NAME] = value }
++    }
++
++    suspend fun getLastAttemptAt(): Long =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_ATTEMPT_AT] ?: 0L
++
++    suspend fun setLastAttemptAt(value: Long) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_ATTEMPT_AT] = value }
++    }
++
++    suspend fun getLastSuccessAt(): Long =
++        userPreferencesFlow.first()[UserPreferencesKeys.LAST_SUCCESS_AT] ?: 0L
++
++    suspend fun setLastSuccessAt(value: Long) {
++        userPreferences.edit { it[UserPreferencesKeys.LAST_SUCCESS_AT] = value }
++    }
++
+     val periodicCheckEnabledFlow: Flow<Boolean> = userPreferencesFlow.map { preferences ->
+         preferences[UserPreferencesKeys.PERIODIC_CHECK_ENABLED] ?: true
+     }
+@@ -106,9 +237,9 @@ class UserPreferencesRepository(context: Context) {
+     suspend fun setPeriodicCheckEnabled(enabled: Boolean) {
+         userPreferences.edit { it[UserPreferencesKeys.PERIODIC_CHECK_ENABLED] = enabled }
+         if (enabled) {
+-            UpdatesCheckWorker.schedulePeriodicCheck(appContext)
++            UpdateCheckScheduler.reschedule(appContext)
+         } else {
+-            UpdatesCheckWorker.cancelPeriodicCheck(appContext)
++            UpdateCheckScheduler.cancel(appContext)
+         }
+     }
+ 
+diff --git a/app/src/main/java/org/lineageos/updater/misc/Utils.java b/app/src/main/java/org/lineageos/updater/misc/Utils.java
+index 08599af..341db84 100644
+--- a/app/src/main/java/org/lineageos/updater/misc/Utils.java
++++ b/app/src/main/java/org/lineageos/updater/misc/Utils.java
+@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
+ import android.os.storage.StorageManager;
+ import android.util.Log;
+ 
++import androidx.core.content.ContextCompat;
+ import androidx.preference.PreferenceManager;
+ 
+ import org.lineageos.updater.R;
+@@ -39,10 +40,15 @@ public class Utils {
+     }
+ 
+     public static void triggerUpdate(Context context, String downloadId) {
++        triggerUpdate(context, downloadId, false);
++    }
++
++    public static void triggerUpdate(Context context, String downloadId, boolean autoInstall) {
+         final Intent intent = new Intent(context, UpdaterService.class);
+         intent.setAction(UpdaterService.ACTION_INSTALL_UPDATE);
+         intent.putExtra(UpdaterService.EXTRA_DOWNLOAD_ID, downloadId);
+-        context.startService(intent);
++        intent.putExtra(UpdaterService.EXTRA_AUTO_INSTALL, autoInstall);
++        ContextCompat.startForegroundService(context, intent);
+     }
+ 
+     /**
+diff --git a/app/src/main/java/org/lineageos/updater/preferences/PreferencesScreen.kt b/app/src/main/java/org/lineageos/updater/preferences/PreferencesScreen.kt
+index 4f3a2a4..a936a76 100644
+--- a/app/src/main/java/org/lineageos/updater/preferences/PreferencesScreen.kt
++++ b/app/src/main/java/org/lineageos/updater/preferences/PreferencesScreen.kt
+@@ -5,31 +5,50 @@
+ 
+ package org.lineageos.updater.preferences
+ 
++import android.text.format.DateFormat
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.IntState
++import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.FocusDirection
+ import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.platform.LocalFocusManager
+ import androidx.compose.ui.res.stringResource
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ import com.android.settingslib.spa.widget.preference.ListPreference
+ import com.android.settingslib.spa.widget.preference.ListPreferenceModel
+ import com.android.settingslib.spa.widget.preference.ListPreferenceOption
++import com.android.settingslib.spa.widget.preference.Preference
++import com.android.settingslib.spa.widget.preference.PreferenceModel
+ import com.android.settingslib.spa.widget.preference.SwitchPreference
+ import com.android.settingslib.spa.widget.preference.SwitchPreferenceModel
+-import com.android.settingslib.spa.widget.scaffold.RegularScaffold
++import com.android.settingslib.spa.widget.scaffold.SettingsScaffold
+ import com.android.settingslib.spa.widget.ui.Category
++import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ import org.lineageos.updater.R
+ import org.lineageos.updater.UpdaterApplication
+-import org.lineageos.updater.data.CheckInterval
++import org.lineageos.updater.data.CheckSchedule
++import org.lineageos.updater.data.CheckScheduleMode
+ import org.lineageos.updater.data.UserPreferencesRepository
+ import org.lineageos.updater.deviceinfo.DeviceInfoUtils
++import org.lineageos.updater.updatescheck.UpdateCheckScheduler
+ import org.lineageos.updater.util.BatteryMonitor
+ import java.io.File
++import java.time.DayOfWeek
++import java.time.format.TextStyle
++import java.util.Date
++import java.util.Locale
+ 
+ @Composable
+ fun PreferencesScreen() {
+@@ -39,8 +58,24 @@ fun PreferencesScreen() {
+     val batteryMonitor = application.batteryMonitor
+     val isABDevice = remember { DeviceInfoUtils.isABDevice }
+     val showRecoveryUpdate = remember { installRecoveryScriptExists() }
+-    RegularScaffold(title = stringResource(R.string.display_name)) {
+-        PreferencesContent(repository, batteryMonitor, isABDevice, showRecoveryUpdate)
++    val focusManager = LocalFocusManager.current
++
++    // The TV scaffold starts with focus on the top-left back button. Move it to
++    // the first preference so D-pad/OK operate the settings, not "back".
++    LaunchedEffect(Unit) {
++        delay(100)
++        focusManager.moveFocus(FocusDirection.Down)
++    }
++
++    SettingsScaffold(title = stringResource(R.string.display_name)) { paddingValues ->
++        Column(
++            Modifier
++                .fillMaxSize()
++                .padding(paddingValues)
++                .verticalScroll(rememberScrollState())
++        ) {
++            PreferencesContent(repository, batteryMonitor, isABDevice, showRecoveryUpdate)
++        }
+     }
+ }
+ 
+@@ -51,14 +86,17 @@ private fun PreferencesContent(
+     isABDevice: Boolean,
+     showRecoveryUpdate: Boolean,
+ ) {
++    val context = LocalContext.current
+     val coroutineScope = rememberCoroutineScope()
+     val abPerfMode by repository.abPerfModeFlow.collectAsStateWithLifecycle(false)
+     val batteryState by batteryMonitor.batteryState.collectAsStateWithLifecycle(
+         batteryMonitor.currentBatteryState
+     )
+     val autoDelete by repository.autoDeleteFlow.collectAsStateWithLifecycle(true)
++    val autoInstall by repository.autoInstallFlow.collectAsStateWithLifecycle(false)
++    val autoReboot by repository.autoRebootFlow.collectAsStateWithLifecycle(false)
+     val streamUpdates by repository.streamUpdatesFlow.collectAsStateWithLifecycle(true)
+-    val checkInterval by repository.checkIntervalFlow.collectAsStateWithLifecycle(CheckInterval.default)
++    val checkSchedule by repository.checkScheduleFlow.collectAsStateWithLifecycle(CheckSchedule())
+     val meteredNetworkWarning by repository.meteredNetworkWarningFlow.collectAsStateWithLifecycle(
+         true
+     )
+@@ -66,15 +104,80 @@ private fun PreferencesContent(
+     var recoveryUpdateEnabled by remember { mutableStateOf(repository.getRecoveryUpdateEnabled()) }
+ 
+     val autoUpdatesCheckSummary = stringResource(R.string.menu_auto_updates_check_summary)
++    val autoInstallSummary = stringResource(
++        if (periodicCheckEnabled) {
++            R.string.menu_auto_install_updates_summary
++        } else {
++            R.string.menu_auto_install_updates_requires_check
++        }
++    )
++    val autoRebootSummary = stringResource(R.string.menu_auto_reboot_summary)
+     val autoDeleteUpdatesSummary = stringResource(R.string.menu_auto_delete_updates_summary)
+     val streamUpdatesSummary = stringResource(R.string.menu_stream_updates_summary)
+     val meteredNetworkWarningSummary = stringResource(R.string.menu_metered_network_warning_summary)
+     val abPerfModeSummary = stringResource(R.string.menu_ab_perf_mode_summary)
+     val abPerfModeChargingSummary = stringResource(R.string.menu_ab_perf_mode_summary_charging)
+     val updateRecoverySummary = stringResource(R.string.menu_update_recovery_summary)
+-    val selectedCheckInterval = remember(checkInterval) {
++    val catchUpSummary = stringResource(R.string.check_schedule_catch_up_summary)
++    val modeTexts = listOf(
++        stringResource(R.string.check_schedule_daily),
++        stringResource(R.string.check_schedule_weekly),
++        stringResource(R.string.check_schedule_monthly),
++    )
++    val dayOfWeekOptions = remember {
++        DayOfWeek.values().map { day ->
++            ListPreferenceOption(
++                id = day.value,
++                text = day.getDisplayName(TextStyle.FULL, Locale.getDefault())
++                    .replaceFirstChar { it.titlecase(Locale.getDefault()) },
++            )
++        }
++    }
++    val hourOptions = remember {
++        (0..23).map { ListPreferenceOption(it, String.format(Locale.getDefault(), "%02d", it)) }
++    }
++    val minuteOptions = remember {
++        (0..55 step 5).map {
++            ListPreferenceOption(it, String.format(Locale.getDefault(), "%02d", it))
++        }
++    }
++    val dayOfMonthOptions = remember {
++        (1..31).map { ListPreferenceOption(it, it.toString()) }
++    }
++    val selectedMode = remember(checkSchedule) {
++        object : IntState {
++            override val intValue = checkSchedule.mode.ordinal
++        }
++    }
++    val selectedHour = remember(checkSchedule) {
+         object : IntState {
+-            override val intValue = checkInterval.ordinal
++            override val intValue = checkSchedule.hour
++        }
++    }
++    val selectedMinute = remember(checkSchedule) {
++        object : IntState {
++            override val intValue = checkSchedule.minute
++        }
++    }
++    val selectedDayOfWeek = remember(checkSchedule) {
++        object : IntState {
++            override val intValue = checkSchedule.dayOfWeek.value
++        }
++    }
++    val selectedDayOfMonth = remember(checkSchedule) {
++        object : IntState {
++            override val intValue = checkSchedule.dayOfMonth
++        }
++    }
++    val nextRunText = remember(checkSchedule, periodicCheckEnabled) {
++        if (!periodicCheckEnabled) {
++            context.getString(R.string.check_schedule_disabled)
++        } else {
++            val next = UpdateCheckScheduler.nextRun(checkSchedule)
++            val nextMillis = next.toInstant().toEpochMilli()
++            val date = DateFormat.getMediumDateFormat(context).format(Date(nextMillis))
++            val time = DateFormat.getTimeFormat(context).format(Date(nextMillis))
++            context.getString(R.string.check_schedule_next, date, time)
+         }
+     }
+ 
+@@ -87,28 +190,107 @@ private fun PreferencesContent(
+                 coroutineScope.launch { repository.setPeriodicCheckEnabled(value) }
+             }
+         })
++    }
+ 
++    Category(title = stringResource(R.string.pref_category_check_schedule)) {
+         ListPreference(object : ListPreferenceModel {
+-            override val title = stringResource(R.string.menu_auto_updates_check_interval)
++            override val title = stringResource(R.string.menu_check_schedule)
+             override val enabled = { periodicCheckEnabled }
+-            override val options = listOf(
+-                ListPreferenceOption(
+-                    id = CheckInterval.DAILY.ordinal,
+-                    text = stringResource(R.string.time_unit_day),
+-                ),
+-                ListPreferenceOption(
+-                    id = CheckInterval.WEEKLY.ordinal,
+-                    text = stringResource(R.string.time_unit_week),
+-                ),
+-                ListPreferenceOption(
+-                    id = CheckInterval.MONTHLY.ordinal,
+-                    text = stringResource(R.string.time_unit_month),
+-                ),
+-            )
+-            override val selectedId = selectedCheckInterval
++            override val options = modeTexts.mapIndexed { index, text ->
++                ListPreferenceOption(id = index, text = text)
++            }
++            override val selectedId = selectedMode
+             override val onIdSelected: (Int) -> Unit = { id ->
+-                val interval = CheckInterval.entries.getOrElse(id) { CheckInterval.default }
+-                coroutineScope.launch { repository.setCheckInterval(interval) }
++                val mode = CheckScheduleMode.entries.getOrElse(id) { CheckScheduleMode.default }
++                coroutineScope.launch { repository.setCheckSchedule(checkSchedule.copy(mode = mode)) }
++            }
++        })
++
++        ListPreference(object : ListPreferenceModel {
++            override val title = stringResource(R.string.menu_check_hour)
++            override val enabled = { periodicCheckEnabled }
++            override val options = hourOptions
++            override val selectedId = selectedHour
++            override val onIdSelected: (Int) -> Unit = { id ->
++                coroutineScope.launch {
++                    repository.setCheckSchedule(checkSchedule.copy(hour = id.coerceIn(0, 23)))
++                }
++            }
++        })
++
++        ListPreference(object : ListPreferenceModel {
++            override val title = stringResource(R.string.menu_check_minute)
++            override val enabled = { periodicCheckEnabled }
++            override val options = minuteOptions
++            override val selectedId = selectedMinute
++            override val onIdSelected: (Int) -> Unit = { id ->
++                coroutineScope.launch {
++                    repository.setCheckSchedule(checkSchedule.copy(minute = id.coerceIn(0, 59)))
++                }
++            }
++        })
++
++        if (checkSchedule.mode == CheckScheduleMode.WEEKLY) {
++            ListPreference(object : ListPreferenceModel {
++                override val title = stringResource(R.string.menu_check_day_of_week)
++                override val enabled = { periodicCheckEnabled }
++                override val options = dayOfWeekOptions
++                override val selectedId = selectedDayOfWeek
++                override val onIdSelected: (Int) -> Unit = { id ->
++                    coroutineScope.launch {
++                        repository.setCheckSchedule(
++                            checkSchedule.copy(dayOfWeek = DayOfWeek.of(id.coerceIn(1, 7)))
++                        )
++                    }
++                }
++            })
++        }
++
++        if (checkSchedule.mode == CheckScheduleMode.MONTHLY) {
++            ListPreference(object : ListPreferenceModel {
++                override val title = stringResource(R.string.menu_check_day_of_month)
++                override val enabled = { periodicCheckEnabled }
++                override val options = dayOfMonthOptions
++                override val selectedId = selectedDayOfMonth
++                override val onIdSelected: (Int) -> Unit = { id ->
++                    coroutineScope.launch {
++                        repository.setCheckSchedule(
++                            checkSchedule.copy(dayOfMonth = id.coerceIn(1, 31))
++                        )
++                    }
++                }
++            })
++        }
++
++        Preference(object : PreferenceModel {
++            override val title = stringResource(R.string.menu_check_next)
++            override val summary = { nextRunText }
++        })
++
++        Preference(object : PreferenceModel {
++            override val title = stringResource(R.string.menu_check_catch_up)
++            override val summary = { catchUpSummary }
++        })
++    }
++
++    Category(title = stringResource(R.string.pref_category_automatic_install)) {
++        SwitchPreference(object : SwitchPreferenceModel {
++            override val title = stringResource(R.string.menu_auto_install_updates)
++            override val summary = { autoInstallSummary }
++            override val changeable = { periodicCheckEnabled }
++            override val checked = { autoInstall }
++            override val onCheckedChange: (Boolean) -> Unit = { value ->
++                coroutineScope.launch { repository.setAutoInstall(value) }
++            }
++        })
++
++        SwitchPreference(object : SwitchPreferenceModel {
++            override val title = stringResource(R.string.menu_auto_reboot)
++            override val summary = { autoRebootSummary }
++            override val changeable = { periodicCheckEnabled && autoInstall }
++            override val checked = { autoReboot }
++            override val onCheckedChange: (Boolean) -> Unit = { value ->
++                coroutineScope.launch { repository.setAutoReboot(value) }
+             }
+         })
+     }
+diff --git a/app/src/main/java/org/lineageos/updater/updatescheck/UpdateCheckScheduler.kt b/app/src/main/java/org/lineageos/updater/updatescheck/UpdateCheckScheduler.kt
+new file mode 100644
+index 0000000..6ce8447
+--- /dev/null
++++ b/app/src/main/java/org/lineageos/updater/updatescheck/UpdateCheckScheduler.kt
+@@ -0,0 +1,317 @@
++/*
++ * SPDX-FileCopyrightText: The LineageOS Project
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++package org.lineageos.updater.updatescheck
++
++import android.content.Context
++import android.util.Log
++import androidx.work.Constraints
++import androidx.work.ExistingWorkPolicy
++import androidx.work.NetworkType
++import androidx.work.OneTimeWorkRequestBuilder
++import androidx.work.WorkManager
++import androidx.work.workDataOf
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.launch
++import org.lineageos.updater.UpdaterApplication
++import org.lineageos.updater.data.CheckSchedule
++import org.lineageos.updater.data.CheckScheduleMode
++import java.time.LocalDate
++import java.time.LocalTime
++import java.time.Month
++import java.time.YearMonth
++import java.time.ZoneId
++import java.time.ZonedDateTime
++import java.time.temporal.TemporalAdjusters
++import java.util.concurrent.TimeUnit
++
++object UpdateCheckScheduler {
++    private const val TAG = "UpdateCheckScheduler"
++
++    private const val WORK_NAME_PREFIX = "update_check_scheduled_"
++    private const val WORK_TAG = "update_check_scheduled"
++    private const val LEGACY_SCHEDULED_WORK_NAME = "update_check_scheduled"
++    private const val LEGACY_PERIODIC_WORK_NAME = "update_check_periodic"
++    private const val MAX_CATCH_UP_ATTEMPTS = 3
++    private const val MISSED_GRACE_MS = 10 * 1000L
++    private const val CATCH_UP_DELAY_MINUTES = 12L
++
++    private val networkConstraints = Constraints.Builder()
++        .setRequiredNetworkType(NetworkType.CONNECTED)
++        .build()
++
++    private fun prefs(context: Context) =
++        (context.applicationContext as UpdaterApplication).userPreferencesRepository
++
++    fun nextRun(
++        schedule: CheckSchedule,
++        after: ZonedDateTime = ZonedDateTime.now(),
++    ): ZonedDateTime {
++        val zone = after.zone
++        val time = LocalTime.of(schedule.hour, schedule.minute)
++        return when (schedule.mode) {
++            CheckScheduleMode.DAILY -> {
++                var candidate = after.toLocalDate().atTime(time).atZone(zone)
++                if (!candidate.isAfter(after)) {
++                    candidate = candidate.plusDays(1)
++                }
++                candidate
++            }
++
++            CheckScheduleMode.WEEKLY -> {
++                val date = after.toLocalDate()
++                    .with(TemporalAdjusters.nextOrSame(schedule.dayOfWeek))
++                var candidate = date.atTime(time).atZone(zone)
++                if (!candidate.isAfter(after)) {
++                    candidate = date.plusWeeks(1).atTime(time).atZone(zone)
++                }
++                candidate
++            }
++
++            CheckScheduleMode.MONTHLY -> {
++                var candidate = monthlyCandidate(
++                    after.year, after.month, schedule, time, zone
++                )
++                if (!candidate.isAfter(after)) {
++                    val nextMonth = after.toLocalDate()
++                        .withDayOfMonth(1)
++                        .plusMonths(1)
++                    candidate = monthlyCandidate(
++                        nextMonth.year, nextMonth.month, schedule, time, zone
++                    )
++                }
++                candidate
++            }
++        }
++    }
++
++    fun catchUpRun(
++        schedule: CheckSchedule,
++        after: ZonedDateTime = ZonedDateTime.now(),
++    ): ZonedDateTime {
++        val regular = nextRun(schedule, after)
++        val candidate = after.plusMinutes(CATCH_UP_DELAY_MINUTES)
++        return if (candidate.isBefore(regular)) candidate else regular
++    }
++
++    suspend fun scheduleNext(
++        context: Context,
++        schedule: CheckSchedule,
++        catchUp: Boolean = false,
++        attempt: Int = 0,
++        currentWorkName: String? = null,
++    ) {
++        val now = ZonedDateTime.now()
++        val target = if (catchUp) catchUpRun(schedule, now) else nextRun(schedule, now)
++        scheduleAt(context, schedule, target, catchUp, attempt, currentWorkName)
++    }
++
++    suspend fun scheduleCatchUpSoon(
++        context: Context,
++        schedule: CheckSchedule,
++        attempt: Int = 0,
++        currentWorkName: String? = null,
++    ) {
++        val now = ZonedDateTime.now()
++        val catchUp = catchUpRun(schedule, now)
++        if (catchUp.isBefore(nextRun(schedule, now))) {
++            scheduleAt(
++                context, schedule, catchUp,
++                catchUp = true, attempt = attempt, currentWorkName = currentWorkName,
++            )
++        } else {
++            scheduleNext(context, schedule, currentWorkName = currentWorkName)
++        }
++    }
++
++    suspend fun scheduleAfterFailure(
++        context: Context,
++        schedule: CheckSchedule,
++        attempt: Int,
++        currentWorkName: String? = null,
++    ) {
++        val now = ZonedDateTime.now()
++        val regular = nextRun(schedule, now)
++        val catchUp = catchUpRun(schedule, now)
++        if (attempt < MAX_CATCH_UP_ATTEMPTS && catchUp.isBefore(regular)) {
++            Log.i(
++                TAG,
++                "Scheduling catch-up attempt ${attempt + 1} at $catchUp",
++            )
++            scheduleAt(
++                context, schedule, catchUp,
++                catchUp = true, attempt = attempt + 1, currentWorkName = currentWorkName,
++            )
++        } else {
++            Log.i(TAG, "Catch-up limit reached or next run is sooner; scheduling $regular")
++            scheduleAt(
++                context, schedule, regular,
++                catchUp = false, attempt = 0, currentWorkName = currentWorkName,
++            )
++        }
++    }
++
++    suspend fun reschedule(context: Context) {
++        val prefs = prefs(context)
++        if (prefs.getPeriodicCheckEnabled()) {
++            scheduleNext(context, prefs.getCheckSchedule())
++        } else {
++            cancel(context)
++        }
++    }
++
++    suspend fun ensureScheduled(context: Context) {
++        val prefs = prefs(context)
++        if (!prefs.getPeriodicCheckEnabled()) {
++            cancel(context)
++            return
++        }
++
++        val schedule = prefs.getCheckSchedule()
++        val now = System.currentTimeMillis()
++        val lastScheduled = prefs.getLastScheduledAt()
++        val lastSuccess = prefs.getLastSuccessAt()
++        val pendingCatchUp = prefs.getLastScheduledCatchUp()
++        val attempt = prefs.getLastScheduledAttempt()
++
++        val missed = lastScheduled > 0 &&
++                lastScheduled < now - MISSED_GRACE_MS &&
++                lastSuccess < lastScheduled
++        // A catch-up scheduled before a reboot (its timestamp may still be in
++        // the future) must survive the reboot and run after boot, not be
++        // replaced by the next regular schedule.
++        val catchUpPending = pendingCatchUp &&
++                lastScheduled > 0 &&
++                lastSuccess < lastScheduled
++
++        when {
++            (missed || catchUpPending) && attempt >= MAX_CATCH_UP_ATTEMPTS -> {
++                Log.i(TAG, "Catch-up limit reached before boot; scheduling regular check")
++                scheduleNext(context, schedule)
++            }
++
++            missed || catchUpPending -> {
++                Log.i(
++                    TAG,
++                    "Missed/failed scheduled check at $lastScheduled; " +
++                            "catch-up in $CATCH_UP_DELAY_MINUTES min after boot " +
++                            "(attempt=$attempt)",
++                )
++                scheduleCatchUpSoon(context, schedule, attempt)
++            }
++
++            else -> scheduleNext(context, schedule)
++        }
++
++        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_PERIODIC_WORK_NAME)
++    }
++
++    @JvmStatic
++    fun ensureScheduledAsync(context: Context) {
++        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
++            try {
++                ensureScheduled(context)
++            } catch (e: Exception) {
++                Log.e(TAG, "Could not ensure update check schedule", e)
++            }
++        }
++    }
++
++    @JvmStatic
++    fun rescheduleAsync(context: Context) {
++        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
++            try {
++                reschedule(context)
++            } catch (e: Exception) {
++                Log.e(TAG, "Could not reschedule update check", e)
++            }
++        }
++    }
++
++    @JvmStatic
++    fun cancel(context: Context) {
++        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
++            try {
++                val prefs = prefs(context)
++                prefs.getLastScheduledWorkName()?.let {
++                    WorkManager.getInstance(context).cancelUniqueWork(it)
++                }
++            } catch (e: Exception) {
++                Log.e(TAG, "Could not cancel scheduled work by name", e)
++            }
++        }
++        WorkManager.getInstance(context).cancelAllWorkByTag(WORK_TAG)
++        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_SCHEDULED_WORK_NAME)
++        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_PERIODIC_WORK_NAME)
++    }
++
++    private suspend fun scheduleAt(
++        context: Context,
++        schedule: CheckSchedule,
++        target: ZonedDateTime,
++        catchUp: Boolean,
++        attempt: Int,
++        currentWorkName: String?,
++    ) {
++        val now = ZonedDateTime.now()
++        val delayMs = java.time.Duration.between(now, target)
++            .toMillis()
++            .coerceAtLeast(0L)
++        val newWorkName = WORK_NAME_PREFIX +
++                "${System.currentTimeMillis()}_${target.toInstant().toEpochMilli()}"
++
++        val request = OneTimeWorkRequestBuilder<UpdatesCheckWorker>()
++            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
++            .setConstraints(networkConstraints)
++            .addTag(WORK_TAG)
++            .setInputData(
++                workDataOf(
++                    UpdatesCheckWorker.KEY_CATCH_UP to catchUp,
++                    UpdatesCheckWorker.KEY_ATTEMPT to attempt,
++                    UpdatesCheckWorker.KEY_WORK_NAME to newWorkName,
++                )
++            )
++            .build()
++
++        val prefs = prefs(context)
++        val oldWorkName = prefs.getLastScheduledWorkName()
++        if (oldWorkName != null && oldWorkName != currentWorkName && oldWorkName != newWorkName) {
++            // Cancel only the previous queued (or superseded) work. Never cancel
++            // the worker that is currently scheduling its successor.
++            WorkManager.getInstance(context).cancelUniqueWork(oldWorkName)
++        }
++
++        WorkManager.getInstance(context).enqueueUniqueWork(
++            newWorkName,
++            ExistingWorkPolicy.REPLACE,
++            request,
++        )
++        WorkManager.getInstance(context).cancelUniqueWork(LEGACY_SCHEDULED_WORK_NAME)
++        WorkManager.getInstance(context).pruneWork()
++        prefs.setLastScheduledWorkName(newWorkName)
++        prefs.setLastScheduledAt(target.toInstant().toEpochMilli())
++        prefs.setLastScheduledCatchUp(catchUp)
++        prefs.setLastScheduledAttempt(attempt)
++
++        Log.i(
++            TAG,
++            "Scheduled update check at $target (catchUp=$catchUp, attempt=$attempt, " +
++                    "delayMs=$delayMs, work=$newWorkName)"
++        )
++    }
++
++    private fun monthlyCandidate(
++        year: Int,
++        month: Month,
++        schedule: CheckSchedule,
++        time: LocalTime,
++        zone: ZoneId,
++    ): ZonedDateTime {
++        val day = schedule.dayOfMonth.coerceAtMost(YearMonth.of(year, month).lengthOfMonth())
++        return LocalDate.of(year, month, day).atTime(time).atZone(zone)
++    }
++}
+diff --git a/app/src/main/java/org/lineageos/updater/updatescheck/UpdatesCheckWorker.kt b/app/src/main/java/org/lineageos/updater/updatescheck/UpdatesCheckWorker.kt
+index 49dce2a..b8705f1 100644
+--- a/app/src/main/java/org/lineageos/updater/updatescheck/UpdatesCheckWorker.kt
++++ b/app/src/main/java/org/lineageos/updater/updatescheck/UpdatesCheckWorker.kt
+@@ -5,50 +5,167 @@
+ 
+ package org.lineageos.updater.updatescheck
+ 
++import android.app.Notification
+ import android.content.Context
++import android.content.pm.ServiceInfo
+ import android.util.Log
+-import androidx.work.BackoffPolicy
++import kotlinx.coroutines.CancellationException
+ import androidx.work.Constraints
+ import androidx.work.CoroutineWorker
+-import androidx.work.ExistingPeriodicWorkPolicy
+ import androidx.work.ExistingWorkPolicy
++import androidx.work.ForegroundInfo
+ import androidx.work.NetworkType
+ import androidx.work.OneTimeWorkRequestBuilder
+-import androidx.work.PeriodicWorkRequestBuilder
+ import androidx.work.WorkManager
+ import androidx.work.WorkerParameters
+-import kotlinx.coroutines.CoroutineScope
+-import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.SupervisorJob
+-import kotlinx.coroutines.launch
++import androidx.work.workDataOf
++import org.lineageos.updater.R
+ import org.lineageos.updater.UpdaterApplication
+-import org.lineageos.updater.data.CheckInterval
+-import kotlin.time.Duration.Companion.hours
+-import kotlin.time.toJavaDuration
++import org.lineageos.updater.controller.UpdaterController
++import org.lineageos.updater.data.UpdateStatus
++import org.lineageos.updater.misc.Utils
++import org.lineageos.updater.notifications.NotificationHelper
+ 
+ class UpdatesCheckWorker(
+     context: Context,
+     params: WorkerParameters,
+ ) : CoroutineWorker(context, params) {
+     override suspend fun doWork(): Result {
++        val application = applicationContext as UpdaterApplication
++        val preferences = application.userPreferencesRepository
++        val manual = inputData.getBoolean(KEY_MANUAL, false)
++        val catchUp = inputData.getBoolean(KEY_CATCH_UP, false)
++        val attempt = inputData.getInt(KEY_ATTEMPT, 0)
++        val currentWorkName = inputData.getString(KEY_WORK_NAME)
++        val autoInstall = !manual && preferences.getAutoInstall()
++
++        if (!manual) {
++            preferences.setLastAttemptAt(System.currentTimeMillis())
++            Log.i(TAG, "Scheduled update check: catchUp=$catchUp attempt=$attempt")
++        }
++        if (autoInstall) {
++            setForeground(createForegroundInfo())
++        }
++
+         return try {
+-            val application = applicationContext as UpdaterApplication
+-            val fetchedAt = application.updatesRepository.fetchUpdates()
+-            if (fetchedAt != null) {
+-                application.appStateRepository.setLastCheckedTimestamp(fetchedAt)
++            val result = application.updatesRepository.fetchUpdatesResult()
++            if (result == null) {
++                Log.w(TAG, "Update check skipped: no network")
++                if (!manual) {
++                    scheduleAfterFailure(application, attempt, currentWorkName)
++                }
++                Result.success()
++            } else {
++                preferences.setLastSuccessAt(System.currentTimeMillis())
++                application.appStateRepository.setLastCheckedTimestamp(result.fetchedAt)
++                if (autoInstall) {
++                    maybeAutoInstall(application)
++                }
++                if (!manual && preferences.getPeriodicCheckEnabled()) {
++                    UpdateCheckScheduler.scheduleNext(
++                        application,
++                        preferences.getCheckSchedule(),
++                        currentWorkName = currentWorkName,
++                    )
++                }
++                Result.success()
+             }
+-            Result.success()
++        } catch (e: CancellationException) {
++            Log.i(TAG, "Update check cancelled")
++            throw e
+         } catch (e: Exception) {
+             Log.e(TAG, "Update check failed", e)
+-            Result.retry()
++            if (!manual) {
++                scheduleAfterFailure(application, attempt, currentWorkName)
++            }
++            Result.success()
+         }
+     }
+ 
++    private suspend fun scheduleAfterFailure(
++        application: UpdaterApplication,
++        attempt: Int,
++        currentWorkName: String?,
++    ) {
++        val preferences = application.userPreferencesRepository
++        if (!preferences.getPeriodicCheckEnabled()) {
++            return
++        }
++        UpdateCheckScheduler.scheduleAfterFailure(
++            application,
++            preferences.getCheckSchedule(),
++            attempt,
++            currentWorkName,
++        )
++    }
++
++    private suspend fun maybeAutoInstall(application: UpdaterApplication) {
++        val preferences = application.userPreferencesRepository
++        val networkState = application.networkMonitor.currentNetworkState
++        if (!networkState.isOnline) {
++            Log.i(TAG, "Auto install skipped: no network")
++            return
++        }
++        if (networkState.isMetered && preferences.getMeteredNetworkWarning()) {
++            Log.i(TAG, "Auto install skipped: metered network")
++            return
++        }
++        if (!application.batteryMonitor.currentBatteryState.isLevelOk) {
++            Log.i(TAG, "Auto install skipped: battery level is too low")
++            return
++        }
++
++        val update = application.updatesRepository.getAutoInstallCandidate()
++        if (update == null) {
++            Log.d(TAG, "Auto install: no suitable update")
++            return
++        }
++        if (update.status == UpdateStatus.UPDATED_NEED_REBOOT) {
++            Log.i(TAG, "Auto install: update already waiting for reboot")
++            return
++        }
++
++        val controller = UpdaterController.getInstance(application)
++        if (controller.isInstallingUpdate() || controller.hasActiveDownloads()) {
++            Log.i(TAG, "Auto install skipped: an update is already in progress")
++            return
++        }
++
++        // Make sure the singleton controller knows about the update fetched by the
++        // worker; the service uses the same controller instance.
++        controller.addUpdate(update, true)
++
++        // The service decides whether to stream the payload or download it first.
++        // It also keeps itself in the foreground while doing so.
++        Log.i(TAG, "Auto install: starting ${update.downloadId}")
++        preferences.setPendingAutoInstallId(null)
++        Utils.triggerUpdate(application, update.downloadId, true)
++    }
++
++    private fun createForegroundInfo(): ForegroundInfo {
++        val notification = Notification.Builder(applicationContext, NotificationHelper.CHANNEL_ONGOING)
++            .setContentTitle(applicationContext.getString(R.string.display_name))
++            .setContentText(applicationContext.getString(R.string.checking_for_updates))
++            .setSmallIcon(R.drawable.ic_notification)
++            .setOngoing(true)
++            .build()
++        return ForegroundInfo(
++            FOREGROUND_NOTIFICATION_ID,
++            notification,
++            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
++        )
++    }
++
+     companion object {
+         private const val TAG = "UpdatesCheckWorker"
+ 
++        const val KEY_CATCH_UP = "catch_up"
++        const val KEY_ATTEMPT = "attempt"
++        const val KEY_MANUAL = "manual"
++        const val KEY_WORK_NAME = "work_name"
++
+         private const val WORK_NAME_ONESHOT = "update_check_oneshot"
+-        private const val WORK_NAME_PERIODIC = "update_check_periodic"
++        private const val FOREGROUND_NOTIFICATION_ID = 20
+ 
+         private val networkConstraints = Constraints.Builder()
+             .setRequiredNetworkType(NetworkType.CONNECTED)
+@@ -56,7 +173,7 @@ class UpdatesCheckWorker(
+ 
+         @JvmStatic
+         fun cancelPeriodicCheck(context: Context) {
+-            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME_PERIODIC)
++            UpdateCheckScheduler.cancel(context)
+         }
+ 
+         @JvmStatic
+@@ -66,59 +183,19 @@ class UpdatesCheckWorker(
+                 ExistingWorkPolicy.KEEP,
+                 OneTimeWorkRequestBuilder<UpdatesCheckWorker>()
+                     .setConstraints(networkConstraints)
++                    .setInputData(workDataOf(KEY_MANUAL to true))
+                     .build(),
+             )
+         }
+ 
+         @JvmStatic
+         fun schedulePeriodicCheck(context: Context) {
+-            CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+-                val prefs =
+-                    (context.applicationContext as UpdaterApplication).userPreferencesRepository
+-                if (prefs.getPeriodicCheckEnabled()) {
+-                    enqueuePeriodicCheck(
+-                        context,
+-                        prefs.getCheckInterval(),
+-                        ExistingPeriodicWorkPolicy.KEEP
+-                    )
+-                }
+-            }
++            UpdateCheckScheduler.rescheduleAsync(context)
+         }
+ 
+         @JvmStatic
+         fun reschedulePeriodicCheck(context: Context) {
+-            CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+-                val prefs =
+-                    (context.applicationContext as UpdaterApplication).userPreferencesRepository
+-                if (!prefs.getPeriodicCheckEnabled()) {
+-                    cancelPeriodicCheck(context)
+-                } else {
+-                    enqueuePeriodicCheck(
+-                        context,
+-                        prefs.getCheckInterval(),
+-                        ExistingPeriodicWorkPolicy.UPDATE
+-                    )
+-                }
+-            }
+-        }
+-
+-        private fun enqueuePeriodicCheck(
+-            context: Context,
+-            interval: CheckInterval,
+-            policy: ExistingPeriodicWorkPolicy,
+-        ) {
+-            val request =
+-                PeriodicWorkRequestBuilder<UpdatesCheckWorker>(interval.duration.toJavaDuration())
+-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1.hours.toJavaDuration())
+-                    .setConstraints(networkConstraints)
+-                    .build()
+-
+-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+-                WORK_NAME_PERIODIC,
+-                policy,
+-                request,
+-            )
+-            Log.d(TAG, "Scheduled periodic check (policy=$policy, interval=${interval.duration})")
++            UpdateCheckScheduler.rescheduleAsync(context)
+         }
+     }
+ }
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index f40f688..76cbb8e 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -23,6 +23,10 @@
+     <string name="installing_update">Установка обновления системы</string>
+     <string name="installing_update_error">Ошибка установки</string>
+     <string name="installing_update_finished">Обновление в ожидании перезагрузки</string>
++    <string name="update_installed_reboot_notification">Обновление установлено. Перезагрузите устройство, чтобы применить его.</string>
++    <string name="reboot_prompt_title">Перезагрузка для завершения обновления</string>
++    <string name="reboot_prompt_message">Обновление успешно установлено. Перезагрузите устройство сейчас, чтобы применить его.</string>
++    <string name="reboot_now">Перезагрузить сейчас</string>
+     <string name="finalizing_package">Завершение установки</string>
+     <string name="preparing_ota_first_boot">Подготовка к первому запуску</string>
+     <string name="dialog_prepare_zip_message">Подготовка обновления</string>
+@@ -35,7 +39,7 @@
+         • adb reboot
+         ]]></string>
+     <string name="dialog_scratch_mounted_title">Невозможно установить обновление при примонтированной OverlayFS</string>
+-    <string name="reboot">Перезапуск</string>
++    <string name="reboot">Перезагрузка</string>
+     <string name="menu_preferences">Настройки обновления системы</string>
+     <string name="preferences_summary">Синхронизация, загрузка и установка</string>
+     <string name="check_for_updates">Проверка обновлений</string>
+@@ -51,6 +55,26 @@
+     <string name="time_unit_day">День</string>
+     <string name="time_unit_week">Неделя</string>
+     <string name="time_unit_month">Месяц</string>
++    <string name="pref_category_check_schedule">Расписание проверки</string>
++    <string name="menu_check_schedule">Расписание</string>
++    <string name="check_schedule_daily">Ежедневно</string>
++    <string name="check_schedule_weekly">Еженедельно</string>
++    <string name="check_schedule_monthly">Ежемесячно</string>
++    <string name="menu_check_hour">Часы</string>
++    <string name="menu_check_minute">Минуты</string>
++    <string name="menu_check_day_of_week">День недели</string>
++    <string name="menu_check_day_of_month">День месяца</string>
++    <string name="menu_check_next">Следующая проверка</string>
++    <string name="menu_check_catch_up">Догоняющий запуск</string>
++    <string name="check_schedule_next">Следующая проверка: <xliff:g id="date" example="15 нояб.">%1$s</xliff:g> в <xliff:g id="time" example="05:30">%2$s</xliff:g></string>
++    <string name="check_schedule_disabled">Автоматические проверки выключены</string>
++    <string name="check_schedule_catch_up_summary">Если проверка пропущена или завершилась ошибкой, она запустится снова примерно через 12 минут (до 3 попыток).</string>
++    <string name="pref_category_automatic_install">Автоматическая установка</string>
++    <string name="menu_auto_install_updates">Автоматически устанавливать обновления</string>
++    <string name="menu_auto_install_updates_summary">При обнаружении новой сборки в фоне скачать и установить её</string>
++    <string name="menu_auto_install_updates_requires_check">Сначала включите периодическую проверку обновлений</string>
++    <string name="menu_auto_reboot">Автоматически перезагружать</string>
++    <string name="menu_auto_reboot_summary">Перезагрузиться сразу после установки; иначе появится уведомление о перезагрузке</string>
+     <string name="pref_category_download_install">Загрузка и установка</string>
+     <string name="menu_auto_delete_updates">Автоудаление обновлений</string>
+     <string name="menu_auto_delete_updates_summary">Удалять загруженные обновления после установки</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index df56e15..5ef05b6 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -46,6 +46,10 @@
+     <string name="installing_update">Installing system update</string>
+     <string name="installing_update_error">Install error</string>
+     <string name="installing_update_finished">Update pending reboot</string>
++    <string name="update_installed_reboot_notification">Update installed. Reboot the device to apply it.</string>
++    <string name="reboot_prompt_title">Reboot to finish update</string>
++    <string name="reboot_prompt_message">The update was installed successfully. Reboot the device now to apply it.</string>
++    <string name="reboot_now">Reboot now</string>
+     <string name="finalizing_package">Finalizing package installation</string>
+     <string name="preparing_ota_first_boot">Preparing for first boot</string>
+     <string name="dialog_prepare_zip_message">Preliminary update preparation</string>
+@@ -83,6 +87,30 @@
+     <string name="time_unit_week">Week</string>
+     <string name="time_unit_month">Month</string>
+ 
++    <!-- Check schedule -->
++    <string name="pref_category_check_schedule">Check schedule</string>
++    <string name="menu_check_schedule">Schedule</string>
++    <string name="check_schedule_daily">Daily</string>
++    <string name="check_schedule_weekly">Weekly</string>
++    <string name="check_schedule_monthly">Monthly</string>
++    <string name="menu_check_hour">Hour</string>
++    <string name="menu_check_minute">Minute</string>
++    <string name="menu_check_day_of_week">Day of week</string>
++    <string name="menu_check_day_of_month">Day of month</string>
++    <string name="menu_check_next">Next check</string>
++    <string name="menu_check_catch_up">Catch-up run</string>
++    <string name="check_schedule_next">Next check: <xliff:g id="date" example="Nov 15">%1$s</xliff:g> at <xliff:g id="time" example="05:30">%2$s</xliff:g></string>
++    <string name="check_schedule_disabled">Automatic checks are disabled</string>
++    <string name="check_schedule_catch_up_summary">If the scheduled check is missed or fails, it runs again about 12 minutes later (up to 3 attempts).</string>
++
++    <!-- Automatic installation -->
++    <string name="pref_category_automatic_install">Automatic installation</string>
++    <string name="menu_auto_install_updates">Install updates automatically</string>
++    <string name="menu_auto_install_updates_summary">When a new build is found during a background check, download and install it</string>
++    <string name="menu_auto_install_updates_requires_check">Enable periodic update checks first</string>
++    <string name="menu_auto_reboot">Reboot automatically</string>
++    <string name="menu_auto_reboot_summary">Reboot as soon as the update is installed; otherwise a reboot notification is shown</string>
++
+     <!-- Download and installation -->
+     <string name="pref_category_download_install">Download and installation</string>
+     <string name="menu_auto_delete_updates">Auto-delete updates</string>

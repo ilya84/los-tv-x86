@@ -1,23 +1,31 @@
-From abb0bccb95c0d44388ff1cb210de7f33a618b7f0 Mon Sep 17 00:00:00 2001
+From 5e09bcbf5595b291a6f85686042231960435d72b Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Thu, 5 Nov 2026 16:26:25 +1000
+Date: Sat, 14 Nov 2026 12:32:48 +1000
 Subject: [PATCH] los-tv: SELinux media/audio memfd rules, c2-ffmpeg, Widevine,
  tmpfs MLS
 
 Change-Id: I4ffc6954cf9c803f5b887e33b8e9cd69e9c192b7
+
+Also move the update_engine x86 A/B block_device/fstab rules into system
+policy so they ship with the always-updated system image, and exempt
+update_engine from the generic block_device neverallow for the initrd/
+kernel/ramdisk-recovery partitions.
+
+Change-Id: I8e39ace7bbd3e6ad39bd077f6d1b48f0d3f80315
 ---
  private/audioserver.te   |  8 ++++++++
  private/coredomain.te    |  3 +++
- private/domain.te        |  2 +-
+ private/domain.te        |  8 ++++++--
  private/file.te          |  4 ++++
  private/init.te          |  4 +++-
  private/kernel.te        |  4 +++-
  private/mediaswcodec.te  | 13 +++++++++++++
  private/service_contexts |  3 +++
  private/toolbox.te       |  5 ++++-
+ private/update_engine.te | 16 ++++++++++++++++
  public/property.te       |  3 +++
  vendor/mediacodec.te     |  8 ++++++++
- 11 files changed, 53 insertions(+), 4 deletions(-)
+ 12 files changed, 74 insertions(+), 5 deletions(-)
 
 diff --git a/private/audioserver.te b/private/audioserver.te
 index 90f4c9491..832a257d8 100644
@@ -51,7 +59,7 @@ index 2163c5141..ef3461fc7 100644
      is_flag_enabled(RELEASE_AVF_ENABLE_DEVICE_ASSIGNMENT, `-vfio_handler')
      -vold
 diff --git a/private/domain.te b/private/domain.te
-index bdc185c73..041c1516e 100644
+index bdc185c73..e50ee4f9b 100644
 --- a/private/domain.te
 +++ b/private/domain.te
 @@ -90,7 +90,7 @@ allow domain ashmem_libcutils_device:chr_file rw_file_perms;
@@ -63,6 +71,19 @@ index bdc185c73..041c1516e 100644
  allowxperm domain ashmem_compat_memfd:file ioctl ashmem_ioctls;
  
  # Everyone can allocate memory via libcutils, and therefore will all need
+@@ -741,7 +741,11 @@ neverallow { domain -dumpstate -init -vendor_init -system_server } binderfs_logs
+ 
+ # Don't allow raw read/write/open access to block_device
+ # Rather force a relabel to a more specific type
+-neverallow { domain -kernel -init -recovery } block_device:blk_file { open read write };
++# los-tv: update_engine is exempted because the x86 A/B initrd/kernel/
++# ramdisk-recovery partitions are created as generic block_device nodes by
++# the initrd (no by-name type transition). It already has equivalent access
++# to the boot/system partitions through update_engine_common.
++neverallow { domain -kernel -init -recovery -update_engine } block_device:blk_file { open read write };
+ 
+ # Do not allow renaming of block files or character files
+ # Ability to do so can lead to possible use in an exploit chain
 diff --git a/private/file.te b/private/file.te
 index b832da44c..6a7fc98fc 100644
 --- a/private/file.te
@@ -162,6 +183,30 @@ index 265db0a5a..dd48d20ac 100644
  
  # rm -rf in /data/misc/virtualizationservice
  allow toolbox virtualizationservice_data_file:dir { rmdir rw_dir_perms };
+diff --git a/private/update_engine.te b/private/update_engine.te
+index 1a6d9c777..3198e31c7 100644
+--- a/private/update_engine.te
++++ b/private/update_engine.te
+@@ -118,3 +118,19 @@ allow update_engine proc_filesystems:file r_file_perms;
+ 
+ allow update_engine vendor_boot_ota_file:dir { r_dir_perms };
+ allow update_engine vendor_boot_ota_file:file { r_file_perms };
++
++# los-tv: on the x86 A/B image /fstab.<product> is created on tmpfs by the
++# initrd (file_contexts says rootfs, but the initrd tmpfs label wins). Allow
++# both so a future relabel does not regress OTA.
++allow update_engine tmpfs:file r_file_perms;
++allow update_engine tmpfs:dir r_dir_perms;
++allow update_engine rootfs:file r_file_perms;
++allow update_engine rootfs:dir r_dir_perms;
++
++# los-tv: the x86 A/B partitions initrd, kernel and ramdisk-recovery are
++# exposed as generic block_device nodes/symlinks under /dev/block/by-name
++# (there is no GPT by-name type transition for them). update_engine must
++# write the inactive slot directly. The blanket block_device neverallow is
++# exempted for update_engine in domain.te.
++allow update_engine block_device:blk_file rw_file_perms;
++allow update_engine block_device:lnk_file r_file_perms;
 diff --git a/public/property.te b/public/property.te
 index 0bf2bd7ea..ba13331a6 100644
 --- a/public/property.te

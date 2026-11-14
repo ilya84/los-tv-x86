@@ -5,6 +5,7 @@ build/release	patches/build/release/0001-los-tv-disable-volume_group_management_
 system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch
 frameworks/base	patches/frameworks/base/0001-los-tv-TV-framework-notification-extender-Home-key-r.patch
 packages/apps/TvSettings	patches/packages/apps/TvSettings/0001-los-tv-TV-settings-BLE-remotes-x86-display-resolutio.patch
+packages/apps/Updater	patches/packages/apps/Updater/0001-los-tv-auto-install-TV-settings-focus-configurable-c.patch
 device/lineage/sepolicy	patches/device/lineage/sepolicy/0001-los-tv-gmscore_app-drop-apk_verity_prop-access.patch
 packages/modules/Bluetooth	patches/packages/modules/Bluetooth/0001-los-tv-HID-support-remotes-with-many-reports-64.patch
 packages/providers/ContactsProvider	patches/packages/providers/ContactsProvider/0001-los-tv-TV-skip-call-log-background-task-relax-SQL-to.patch
