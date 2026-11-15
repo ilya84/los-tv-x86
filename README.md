@@ -46,11 +46,13 @@ over HTTPS with the LineageOS Updater.
 
 ## Обновления
 
-Текущая опубликованная сборка — `1794703929`:
+Текущая опубликованная OTA — `1794703929`:
 
 - OTA: <https://atv.kacnep.ru/ota/lineage_x86_64_tv-ota-full-1794703929.zip>
 - JSON для Updater: <https://atv.kacnep.ru/x86_64_tv.json>
 - ISO: <https://atv.kacnep.ru/iso/lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso>
+  (build `1794665098`; последний собранный ISO, без YouTube payload sync
+  из `1794703929` — свежий ISO ещё не пересобирался)
 
 OTA подписана собственными `release-keys` (CN `los-tv-x86`), payload
 `initrd,kernel,ramdisk-recovery,system`, сервер отдаёт `Range: bytes`.
