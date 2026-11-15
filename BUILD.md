@@ -100,6 +100,10 @@ repo sync -j8
 6. создаёт симлинки `out/host/linux-x86/bin/meson` и
    `glslangValidator`.
 
+`patches/series` включает `kernel/x86/zenith` — memfd-ashmem shim и
+`CONFIG_KSU` off. Без шима Android 16 userspace не открывает `/dev/ashmem`,
+и система не загружается; если патч ядра не применился, сборку не запускать.
+
 Скрипт ничего не делает разрушительного; повторный запуск безопасен.
 
 ## 4. Ручной путь (если не используется bootstrap)
