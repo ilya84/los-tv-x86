@@ -1,0 +1,18 @@
+From 9495c9d11ac662181a5fe508806819cc72200104 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Sat, 7 Nov 2026 21:54:45 +1000
+Subject: [PATCH] los-tv: disable (Android.bp renamed to .bak)
+
+Change-Id: I7042917ecf6114ccbe9925e226c302e10871fa57
+---
+ Android.bp => Android.bp.bak | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ rename Android.bp => Android.bp.bak (100%)
+
+diff --git a/Android.bp b/Android.bp.bak
+similarity index 100%
+rename from Android.bp
+rename to Android.bp.bak
+-- 
+2.39.5
+
