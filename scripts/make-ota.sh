@@ -7,8 +7,15 @@
 # Что делает:
 #   1) m target-files-package (инкрементально; пересобирает ext4 system.img);
 #   2) при необходимости собирает хост-инструмент ota_from_target_files;
-#   3) генерирует ПОЛНЫЙ OTA (без -i), подпись — штатный testkey;
+#   3) генерирует ПОЛНЫЙ OTA (без -i), подпись — releasekey, если он есть,
+#      иначе штатный testkey;
 #   4) печатает размер/хэши и проверяет целостность.
+#
+# Release-конфиг (bp4a/trunk_staging/...) берётся из
+# vendor/lineage/vars/aosp_target_release; по умолчанию bp4a.
+# Переопределение: LUNCH_VARIANT=trunk_staging bash make-ota.sh
+# Для воспроизводимой сборки: SKIP_AG_DOWNLOADS=true (vendorsetup.sh иначе
+# обновляет pci.ids/usb.ids/toolchain/firmware из сети при каждом lunch).
 #
 # Дерево не правится. Обход грабли с dynamic_partitions_info.txt:
 # у статических разделов этого файла нет, а инструмент при virtual_ab_cow_version=3
@@ -28,7 +35,17 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 TREE=${TREE:-$HOME/android/los-tv-23}
 PRODUCT_OUT="$TREE/out/target/product/x86_64_tv"
 LUNCH_TARGET=lineage_x86_64_tv
-LUNCH_VARIANT=trunk_staging
+# Release train ("bp4a", "trunk_staging", ...).  Follow LineageOS' own
+# target release unless the caller overrides it explicitly:
+#   LUNCH_VARIANT=trunk_staging bash make-ota.sh
+if [ -z "${LUNCH_VARIANT:-}" ]; then
+  _release_file="$TREE/vendor/lineage/vars/aosp_target_release"
+  if [ -f "$_release_file" ]; then
+    LUNCH_VARIANT=$(sed -n 's/^aosp_target_release=//p' "$_release_file" | head -n1)
+  fi
+  unset _release_file
+fi
+LUNCH_VARIANT=${LUNCH_VARIANT:-bp4a}
 LUNCH_TYPE=userdebug
 
 verify_build_props() {
@@ -75,6 +92,7 @@ cd "$TREE"
 
 export TOP="$TREE"
 source build/envsetup.sh >/dev/null 2>&1
+echo "### release config: $LUNCH_VARIANT"
 lunch "$LUNCH_TARGET" "$LUNCH_VARIANT" "$LUNCH_TYPE" || { echo "!! lunch failed"; exit 1; }
 
 if [ "${SKIP_BUILD_PROP_REGEN:-0}" != "1" ]; then

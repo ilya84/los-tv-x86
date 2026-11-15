@@ -47,6 +47,14 @@
 - RTP-звук разведён на два ТВ: `intel` → `192.168.5.150:5004`,
   `e3000n` → `192.168.5.150:5006`; на audiohub два приёмника
   (`tv-rtp.service`, `tv-rtp-2.service`), оба потока active.
+- Сборка переведена на release-конфиг **`bp4a`** (BP4A/Android 16,
+  security patch `2026-10-01`; `trunk_staging` давал `2025-11-05` и
+  ZP1A/Android 17-флаги). `make-ota.sh` берёт release из
+  `vendor/lineage/vars/aosp_target_release` (default `bp4a`), допускает
+  `LUNCH_VARIANT=...`. Для воспроизводимых сборок — `SKIP_AG_DOWNLOADS=true`:
+  `vendorsetup.sh` при `lunch` иначе обновляет `pci.ids`/`usb.ids`,
+  toolchain и firmware из сети. Тестовая OTA `1794711917` проверена на
+  `e3000n`, не публиковалась.
 - Публикация: device tree `8c17122` (squashed: RTP, YouTube payload sync,
   bootctl/`/boot` labels, WMS-workaround, RebootActivity), TvSettings
   `1c8edb57`, aaropa `c5107b0`, Updater patch `4662599`,

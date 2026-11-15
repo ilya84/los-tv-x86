@@ -1,9 +1,11 @@
 # Сборка
 
 Проверено 2026-11-15 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
-Текущие стенды: `intel` (H81M-E, build `1794665098`) — production,
-`e3000n` (AMD E2, build `1794703929`) — тестовый. Оба на release-keys,
-SELinux Enforcing.
+Текущие стенды: `intel` (H81M-E, `_a` `1794703929`) — production,
+`e3000n` (AMD E2, `_a` `1794711917` bp4a/test, `_b` `1794703929` откат) —
+тестовый. Оба на release-keys, SELinux Enforcing. Для 23.2 используется
+release-конфиг **`bp4a`**; security patch — `2026-10-01` (последний для
+замороженной 23.2; более новый — только в 24.0/Android 17).
 
 ## 0. Быстрый старт
 
@@ -20,12 +22,23 @@ git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
 # 3. Собрать ISO
 cd ~/android/los-tv-23
 source build/envsetup.sh
-lunch lineage_x86_64_tv trunk_staging userdebug
+lunch lineage_x86_64_tv bp4a userdebug
 m iso_img
 ```
 
 `bootstrap-tree.sh` идемпотентен: после `m clean` достаточно повторить его.
 `--check` — только проверить, `--install-deps` — доустановить Debian-пакеты.
+
+Для воспроизводимой сборки после первого bootstrap и первого `lunch`
+выставляйте `SKIP_AG_DOWNLOADS=true`: иначе `device/generic/x86_64_tv/vendorsetup.sh`
+при каждом `lunch` запускает `download_ids.sh`/`download_toolchain.sh`/
+`download_sof-firmware.sh`/`download_wireless-regdb.sh` и может менять
+tracked-файлы (`ids/pci.ids`, `ids/usb.ids`) и состав prebuilts из сети.
+
+```sh
+export SKIP_AG_DOWNLOADS=true
+```
+
 На уже пропатченном дереве **не запускать `repo sync`** — он перетирает
 локальные коммиты и патчи.
 
@@ -108,7 +121,7 @@ Play Store в базовый образ не входит; его APK польз
 ```sh
 cd ~/android/los-tv-23
 source build/envsetup.sh
-lunch lineage_x86_64_tv trunk_staging userdebug
+lunch lineage_x86_64_tv bp4a userdebug
 LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 ```
 
@@ -126,14 +139,20 @@ bootstrap — он вернёт симлинки `out/host/linux-x86/bin/meson` 
 ## 6. Сборка full OTA
 
 ```sh
-bash scripts/make-ota.sh
+SKIP_AG_DOWNLOADS=true bash scripts/make-ota.sh
 ```
 
 Скрипт собирает `target-files-package`, генерирует полный A/B OTA
 (`out/target/product/x86_64_tv/lineage_x86_64_tv-ota-full.zip`), проверяет
 размер initrd (16 МиБ) и печатает хэши. Установка — `adb reboot sideload` +
-`adb sideload zip` либо через Updater по воздуху (см. §7). Текущая
-опубликованная сборка — `1794703929`.
+`adb sideload zip` либо через Updater по воздуху (см. §7).
+
+Release-конфиг скрипт берёт из `vendor/lineage/vars/aosp_target_release`
+(сейчас `bp4a`); переопределение — `LUNCH_VARIANT=trunk_staging`. Без
+`SKIP_AG_DOWNLOADS=true` `vendorsetup.sh` при `lunch` может обновить
+`ids/pci.ids`/`ids/usb.ids` и prebuilts из сети, поэтому для релизной
+сборки используйте `SKIP_AG_DOWNLOADS=true`. Текущая опубликованная
+сборка — `1794703929`; тестовая bp4a `1794711917` не публиковалась.
 
 Перед сборкой `make-ota.sh` вызывает `scripts/regen-build-props.sh`: он
 удаляет сгенерированные build.prop всех разделов (system/product/
@@ -242,7 +261,7 @@ EOF
 
 ```sh
 source build/envsetup.sh
-lunch lineage_x86_64_tv trunk_staging userdebug
+lunch lineage_x86_64_tv bp4a userdebug
 m iso_img
 ```
 
@@ -274,21 +293,27 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 
 Проверено 2026-11-15:
 
-- `intel` — production, `_b` build `1794665098` (release-keys), `_a`
-  `1794305356` (testkey) — откат; Enforcing, RTP 5004, add-on и YouTube
-  7.31.301, BT-пульт; OTA `1794703929` ещё не установлена.
-- `e3000n` — тестовый стенд, `_b` build `1794703929`, `_a` `1794701381`;
-  проверены сетевой OTA, автоустановка, RTP 5006, YouTube payload sync.
+- `intel` — production, `_a` build `1794703929` (release-keys,
+  security `2025-11-05`), `_b` `1794665098` — откат; Enforcing, RTP 5004,
+  add-on и YouTube 7.31.301, BT-пульт. Production ещё не переведён на bp4a.
+- `e3000n` — тестовый стенд, `_a` build `1794711917` (bp4a,
+  security `2026-10-01`), `_b` `1794703929` — откат; проверены OTA,
+  автоустановка, RTP 5006, YouTube payload sync.
 - Текущая опубликованная OTA — `1794703929` (1 783 656 108 Б, sha256
   `660bf424…ac45`), ISO `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso`
   (build `1794665098`, md5 `c301caaf3f1298010adfee350ca5c897`).
+  Тестовая bp4a OTA `1794711917` собрана и проверена на `e3000n`, но
+  **не публиковалась**.
 - Оба стенда: userdebug, SELinux Enforcing, release-keys, без шифрования
   данных; `system.img` ~5,8 ГБ.
 - Обязательность SSE4.2 не подтверждена (в работе).
 - Видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
-- После OTA возможен WMS↔InputDispatcher focus desync; в сборке есть
-  workaround `wm size ±1`, полноценный фикс — в работе.
+- WMS↔InputDispatcher focus desync после OTA на bp4a `1794711917`
+  не воспроизвёлся на стабильном boot; первый boot после OTA ещё
+  требует отдельной проверки. Workaround `wm size ±1` в сборке остаётся.
 - Delta OTA для add-on-устройств не поддерживается — публикуйте full.
+- Максимальный security patch для замороженной 23.2 — `2026-10-01`;
+  более новый появится только с 24.0/Android 17.
 
 `recovery$SLOT.img` на x86-схеме — это padded `ramdisk-recovery.img`
 (gzip cpio), а не `recovery.img`; иначе recovery уходит в kernel panic.
