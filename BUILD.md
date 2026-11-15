@@ -10,21 +10,27 @@ release-конфиг **`bp4a`**; security patch — `2026-10-01` (последн
 ## 0. Быстрый старт
 
 ```sh
-# 1. Синхронизировать дерево
-mkdir -p ~/android && cd ~/android
+# 1. Вспомогательный репозиторий (патчи, qcom-манифест, bootstrap)
+git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
+
+# 2. Дерево + qcom-исключение ДО первого sync
+mkdir -p ~/android/los-tv-23 && cd ~/android/los-tv-23
 repo init -u https://github.com/ilya84/lineage_bass_android.git -b lineage-23.2
+mkdir -p .repo/local_manifests
+cp ~/los-tv-x86/manifest/05-remove-qcom.xml .repo/local_manifests/
 repo sync -j8
 
-# 2. Подготовить дерево одним скриптом
-git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
+# 3. Подготовить дерево одним скриптом
 ~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23
 
-# 3. Собрать ISO
-cd ~/android/los-tv-23
+# 4. Собрать ISO
 source build/envsetup.sh
 lunch lineage_x86_64_tv bp4a userdebug
 m iso_img
 ```
+
+`manifest/05-remove-qcom.xml` — 23.2-специфичный список из 42 qcom-проектов
+(94 пути). Для 24.0 его нужно перегенерировать: имена/пути могут измениться.
 
 `bootstrap-tree.sh` идемпотентен: после `m clean` достаточно повторить его.
 `--check` — только проверить, `--install-deps` — доустановить Debian-пакеты.
@@ -55,10 +61,16 @@ export SKIP_AG_DOWNLOADS=true
 ## 2. Манифест и исходники
 
 ```sh
-mkdir -p ~/android && cd ~/android
+mkdir -p ~/android/los-tv-23 && cd ~/android/los-tv-23
 repo init -u https://github.com/ilya84/lineage_bass_android.git -b lineage-23.2
+mkdir -p .repo/local_manifests
+cp ~/los-tv-x86/manifest/05-remove-qcom.xml .repo/local_manifests/
 repo sync -j8
 ```
+
+`05-remove-qcom.xml` убирает ARM-платформенные qcom HAL’ы, которые не
+нужны x86-ТВ; без него чистый sync притащит их обратно. Для 24.0 список
+надо перегенерировать.
 
 В манифесте (`android-x86/04-custom.xml`) наши проекты:
 
@@ -72,7 +84,7 @@ repo sync -j8
 ## 3. Bootstrap чистого дерева (рекомендуется)
 
 ```sh
-git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
+[ -d ~/los-tv-x86 ] || git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
 ~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23
 ```
 
