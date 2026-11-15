@@ -36,6 +36,7 @@ device/generic/x86_64_tv
 system/sepolicy
 device/google/atv
 hardware/interfaces
+kernel/x86/zenith
 "
 
 rm -rf "$HERE/patches"

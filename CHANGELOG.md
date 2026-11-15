@@ -55,6 +55,10 @@
   `vendorsetup.sh` при `lunch` иначе обновляет `pci.ids`/`usb.ids`,
   toolchain и firmware из сети. Тестовая OTA `1794711917` проверена на
   `e3000n`, не публиковалась.
+- `patches/`: добавлен `kernel/x86/zenith` — memfd-ashmem compatibility
+  shim + `CONFIG_KSU` off (squashed `a4edaeac`). Без шима Android 16
+  userspace не находит `/dev/ashmem` и система не грузится; bootstrap
+  теперь применяет его вместе с остальными патчами.
 - Публикация: device tree `8c17122` (squashed: RTP, YouTube payload sync,
   bootctl/`/boot` labels, WMS-workaround, RebootActivity), TvSettings
   `1c8edb57`, aaropa `c5107b0`, Updater patch `4662599`,

@@ -23,3 +23,4 @@ device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0001-los-tv-x86_64-TV-
 system/sepolicy	patches/system/sepolicy/0001-los-tv-SELinux-media-audio-memfd-rules-c2-ffmpeg-Wid.patch
 device/google/atv	patches/device/google/atv/0001-los-tv-map-Home-key-to-HOME-on-ATV.patch
 hardware/interfaces	patches/hardware/interfaces/0001-los-tv-BluetoothHci-return-after-UNABLE_TO_OPEN_INTE.patch
+kernel/x86/zenith	patches/kernel/x86/zenith/0001-los-tv-zenith-kernel-memfd-ashmem-shim-KernelSU-off.patch
