@@ -11,6 +11,9 @@
     Apply in a clean tree *before* repo sync:
       cp manifest/05-remove-qcom.xml <tree>/.repo/local_manifests/
       repo sync -j8
+
+    23.2-specific: regenerate the list for LineageOS 24.0, where qcom
+    names/paths may change.
   -->
   <remove-project name="LineageOS/android_hardware_qcom_audio" />
   <remove-project name="LineageOS/android_hardware_qcom_audio-ar" />
