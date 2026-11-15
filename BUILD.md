@@ -1,7 +1,9 @@
 # Сборка
 
-Проверено 2026-11-13 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
-Текущие стенды: `intel` (H81M-E) — production, `e3000n` (AMD E2) — тестовый.
+Проверено 2026-11-15 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
+Текущие стенды: `intel` (H81M-E, build `1794665098`) — production,
+`e3000n` (AMD E2, build `1794703929`) — тестовый. Оба на release-keys,
+SELinux Enforcing.
 
 ## 0. Быстрый старт
 
@@ -107,7 +109,7 @@ Play Store в базовый образ не входит; его APK польз
 cd ~/android/los-tv-23
 source build/envsetup.sh
 lunch lineage_x86_64_tv trunk_staging userdebug
-m iso_img
+LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 ```
 
 Результат: `out/target/product/x86_64_tv/lineage-23.2-*-x86_64_tv.iso`
@@ -130,7 +132,8 @@ bash scripts/make-ota.sh
 Скрипт собирает `target-files-package`, генерирует полный A/B OTA
 (`out/target/product/x86_64_tv/lineage_x86_64_tv-ota-full.zip`), проверяет
 размер initrd (16 МиБ) и печатает хэши. Установка — `adb reboot sideload` +
-`adb sideload zip`.
+`adb sideload zip` либо через Updater по воздуху (см. §7). Текущая
+опубликованная сборка — `1794703929`.
 
 Перед сборкой `make-ota.sh` вызывает `scripts/regen-build-props.sh`: он
 удаляет сгенерированные build.prop всех разделов (system/product/
@@ -149,14 +152,14 @@ system_ext/vendor/odm/...) и Soong-intermediates, потому что Soong
 `addon-autorestore` создаёт маркер, GRUB грузит recovery, установщик ставит
 компоненты на месте в активный слот (1–3 минуты).
 
-## 7. Сетевой OTA (опционально)
+## 7. Сетевой OTA
 
-В образе уже есть LineageOS Updater, `update_engine` и A/B; пункт
-«Обновление системы» открывается из TV Settings. Для своего сервера нужен
-HTTPS с JSON и системное свойство `lineage.updater.uri`; по умолчанию
-используется официальный сервер LineageOS, где сборок `x86_64_tv` нет.
+В образе есть LineageOS Updater, `update_engine` и A/B; пункт
+«Обновление системы» открывается из TV Settings. В официальных сборках
+запечён `lineage.updater.uri=https://atv.kacnep.ru/x86_64_tv.json`;
+проверка и установка работают по HTTPS, сервер отдаёт `Range: bytes`.
 
-Сборка с URL:
+Сборка с URL (свой сервер или локальный тест):
 
 ```make
 ifneq ($(LOS_TV_OTA_URI),)
@@ -180,17 +183,20 @@ LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 Сервер должен отдавать JSON и OTA по HTTPS с поддержкой `Range` (nginx/Caddy).
 `datetime` должен быть новее текущего `ro.build.date.utc`, `type` — совпадать
 с `ro.lineage.releasetype` (`UNOFFICIAL`). Схема JSON — в
-`packages/apps/Updater/README.md`.
+`packages/apps/Updater/README.md`. Текущий сервер: `atv.kacnep.ru`, Caddy →
+`/srv/ota`, файлы `/ota/*` и `/iso/*` с `immutable`.
 
-В настройках Updater есть категория «Автоматическая установка»:
-автоустановка новой сборки после периодической проверки и, опционально,
-автоматическая перезагрузка после `UPDATED_NEED_REBOOT`. Обе опции по
-умолчанию выключены; без периодической проверки автоустановка недоступна.
-На metered-сети и при низком заряде автоустановка пропускается.
+В настройках Updater есть расписание (daily/weekly/monthly, минуты шагом 5,
+catch-up ~12 минут) и категория «Автоматическая установка»: автоустановка
+новой сборки после периодической проверки и, опционально, автоматическая
+перезагрузка после `UPDATED_NEED_REBOOT`. Обе опции по умолчанию выключены;
+без периодической проверки автоустановка недоступна. На metered-сети и при
+низком заряде автоустановка пропускается.
 
 При публикации давайте OTA уникальное имя (`...-<incremental>.zip`) и
 обновляйте JSON: Caddy/nginx для `/ota/*` обычно ставят `immutable`, и
-перезапись того же URL может оставить у клиента старый файл.
+перезапись того же URL может оставить у клиента старый файл. После
+публикации проверьте `200`, `Content-Length` и `Range: bytes=0-99` → `206`.
 
 Если собираете с собственными ключами (`vendor/lineage-priv/keys`), в
 `keys.mk` нужна строка:
@@ -204,8 +210,9 @@ PRODUCT_MAINLINE_BLUETOOTH_SEPOLICY_DEV_CERTIFICATES := vendor/lineage-priv/keys
 `plat_mac_permissions.xml` не совпадёт с подписью Bluetooth.apk, и
 `com.android.bluetooth` не запустится (`seinfo=default`, zygote abort).
 
-> Безопасность: текущая OTA подписана публичным `testkey`. Для раздачи в
-> интернет нужны собственные release-ключи и пересборка `otacerts`.
+Официальные сборки подписаны собственными `release-keys` (CN `los-tv-x86`),
+`otacerts` содержит `releasekey.x509.pem`. `testkey` используется только
+для перехода со старых сборок (`OTA_KEY=.../testkey`).
 
 ## 8. Своя подпись (userdebug)
 
@@ -265,19 +272,23 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 
 ## 10. Текущее состояние и ограничения
 
-Проверено 2026-11-13:
+Проверено 2026-11-15:
 
-- `intel` — production, слот `_a`, build `1794305356` (testkey);
-- текущий артефакт с release-keys: `system.img` md5
-  `fceb9ed99c440a239969156cc5bebcd7`, build `1794522175`;
-- ISO 2026-11-13 — `lineage-23.2-20261113-UNOFFICIAL-x86_64_tv.iso`,
-  md5 `7fc769697ed3c329cf122bc409345365`;
-- OTA 2026-11-13 — md5 `869b68180a738b6f41210392b2216473` (releasekey).
-- `e3000n` — тестовый стенд, `_a` build `1794522175` (release-keys),
-  `_b` — старый `1793842837` test-keys для отката;
-- userdebug, SELinux Enforcing; без шифрования данных;
-- обязательность SSE4.2 не подтверждена (в работе);
-- видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
+- `intel` — production, `_b` build `1794665098` (release-keys), `_a`
+  `1794305356` (testkey) — откат; Enforcing, RTP 5004, add-on и YouTube
+  7.31.301, BT-пульт; OTA `1794703929` ещё не установлена.
+- `e3000n` — тестовый стенд, `_b` build `1794703929`, `_a` `1794701381`;
+  проверены сетевой OTA, автоустановка, RTP 5006, YouTube payload sync.
+- Текущая опубликованная OTA — `1794703929` (1 783 656 108 Б, sha256
+  `660bf424…ac45`), ISO `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso`
+  (build `1794665098`, md5 `c301caaf3f1298010adfee350ca5c897`).
+- Оба стенда: userdebug, SELinux Enforcing, release-keys, без шифрования
+  данных; `system.img` ~5,8 ГБ.
+- Обязательность SSE4.2 не подтверждена (в работе).
+- Видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
+- После OTA возможен WMS↔InputDispatcher focus desync; в сборке есть
+  workaround `wm size ±1`, полноценный фикс — в работе.
+- Delta OTA для add-on-устройств не поддерживается — публикуйте full.
 
 `recovery$SLOT.img` на x86-схеме — это padded `ramdisk-recovery.img`
 (gzip cpio), а не `recovery.img`; иначе recovery уходит в kernel panic.

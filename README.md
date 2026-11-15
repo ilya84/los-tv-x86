@@ -4,13 +4,14 @@
 
 Экспериментальная сборка Android TV (LineageOS 23.2 / Android 16) для
 x86_64-приставок (ориентированная на использование непосредственно на железе)
-с загрузкой через GRUB, A/B-слотами и установкой с ISO.
+с загрузкой через GRUB, A/B-слотами, установкой с ISO и обновлениями по сети.
 База — только открытые компоненты; проприетарные Widevine L3, NDK
 translation и Play Store ставятся отдельным add-on’ом с recovery.
 
 An experimental Android TV (LineageOS 23.2 / Android 16) build for x86_64
-TV boxes: GRUB boot, A/B slots, Calamares ISO installer and a recovery-based
-add-on for Widevine L3 / NDK translation / Play Store.
+TV boxes: GRUB boot, A/B slots, Calamares ISO installer, a recovery-based
+add-on for Widevine L3 / NDK translation / Play Store, and full OTA updates
+over HTTPS with the LineageOS Updater.
 
 ## Что умеет
 
@@ -18,40 +19,62 @@ add-on for Widevine L3 / NDK translation / Play Store.
   внутренний диск с A/B-слотами (`system_a/b.img`, kernel/initrd/recovery).
 - **GRUB-меню**: основной пункт, Recovery (в т.ч. «Установить проприетарные
   компоненты»), ручной выбор слота, разрешение экрана, kmsg-лог; заголовок
-  отражает запрошенный режим («(to Recovery)», «(to SideLoad)») и таймаут
+  отражает запрошенный режим («(to Recovery)», «(to SideLoad)»), таймаут
   сокращается до 5 секунд.
-- **База**: microG GmsCore, F-Droid, Jellyfin TV, VLC;
-- **SELinux Enforcing** (e3000n, 2026-11-05): медиа-тракт, Widevine L3,
-  Wink/Jellyfin (видео+звук), Bluetooth, boot animation; radeon-правки
-  не затрагивают Intel-путь.
-- **Play Store (TV) + microG**: на e3000n проверены запуск и вход.
-  UX-особенность: после входа Play Store может вернуться на экран
-  «Войти» — просто перезапустите его; для закачки нужен
-  `appops set com.android.vending ACTIVATE_VPN allow` (как на `.198`).
+- **База**: microG GmsCore, F-Droid, Jellyfin TV, VLC.
+- **SELinux Enforcing** на обоих стендах (AMD/radeon и Intel): медиа-тракт,
+  Widevine L3, Wink/Jellyfin (видео+звук), Bluetooth, boot animation.
+- **Play Store (TV) + microG**: проверены запуск и вход. UX-особенность:
+  после входа Play Store может вернуться на экран «Войти» — перезапустите
+  его; для закачки нужен `appops set com.android.vending ACTIVATE_VPN allow`.
 - **Add-on из recovery**: Widevine L3 (ChromeOS hatch), NDK translation
   (google_apis), Play Store/YouTube TV из APK пользователя. Payload-архив
   для повторной установки, режим «только APK», автовосстановление после
-  полного OTA (пока только sideload).
+  полного OTA (sideload и сетевая установка).
 - **Плитка «Проприетарные компоненты»**: объяснение, QR-ссылки, `LINKS.txt`,
   фоновая загрузка образов (foreground-сервис, докачка, sha256), запуск
   установки, скрытие/возврат плитки.
 - **Видео на AMD/radeon**: `c2.ffmpeg.h264` + VA-API (без VPP/DRM-PRIME),
   H.264 до 720p; на Intel включается штатный путь (все правки под
   `*radeon*`, проверено на Gigabyte E3000N, паяный AMD E2).
-- **OTA**: полный OTA в неактивный слот; после установки add-on
-  восстанавливает компоненты на месте в активный слот.
+- **OTA**: полный A/B OTA в неактивный слот; после установки add-on
+  восстанавливает компоненты на месте в активный слот. LineageOS Updater
+  работает через HTTPS-JSON, поддерживает расписание (daily/weekly/monthly),
+  опциональную автоустановку и автоперезагрузку, уведомления и `RebootActivity`.
+- **Звук по RTP**: нативный сендер `AudioRecord(REMOTE_SUBMIX)` → UDP/L16
+  на audiohub; управление из TV Settings (switch, host/port, статистика).
+
+## Обновления
+
+Текущая опубликованная сборка — `1794703929`:
+
+- OTA: <https://atv.kacnep.ru/ota/lineage_x86_64_tv-ota-full-1794703929.zip>
+- JSON для Updater: <https://atv.kacnep.ru/x86_64_tv.json>
+- ISO: <https://atv.kacnep.ru/iso/lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso>
+
+OTA подписана собственными `release-keys` (CN `los-tv-x86`), payload
+`initrd,kernel,ramdisk-recovery,system`, сервер отдаёт `Range: bytes`.
+Установка: TV Settings → Система → Обновления системы, либо
+`adb reboot sideload` + `adb sideload <zip>`. Caddy отдаёт файлы
+`/ota/*` с `immutable`, поэтому каждая сборка публикуется под уникальным
+именем `...-<incremental>.zip`.
 
 ## Железо (в данный момент)
 
-- E3000N (AMD Kabini, radeon) — основной тестовый стенд (с 2026-11-12).
-- ASRock H81M-E (Intel Haswell) — production, постоянная эксплуатация
-  (с 2026-11-12); проверка, что правки не ломают Intel. Используется для
-  эксплуатационных тестов чистовых сборок.
+| Стенд | Железо | Роль | Сборка |
+|---|---|---|---|
+| `intel` | ASRock H81M-E, Intel Haswell | production, постоянная эксплуатация | `_b` `1794665098`, release-keys |
+| `e3000n` | Gigabyte E3000N, AMD Kabini | тестовый стенд | `_b` `1794703929`, release-keys |
 
-## Загрузка:
+Оба — x86_64, Android 16 / SDK 36, `userdebug`, `ro.debuggable=0`,
+SELinux Enforcing, 720p. Проверка правок — сначала на `e3000n`, затем на
+`intel`.
 
-GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data),
-  `system_a/b`, `misc`, A/B.
+## Загрузка
+
+GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data), `system_a/b`,
+`misc`, A/B. Образы слотов и initrd/recovery лежат на `cdrom`; переключение
+слота — через `android.cfg` и bootctl HAL.
 
 ## Репозитории
 
@@ -65,13 +88,24 @@ GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data),
 
 ## Статус и ограничения
 
-- Сборка **userdebug**, SELinux **Enforcing** проверен на e3000n
-  (2026-11-05) и Intel H81M (2026-11-07).
-- Шифрование данных не настроено.
-- Уровень патчей безопасности — на момент синхронизации LineageOS 23.2.
-- SSE4.2 обязателен на данный момент. Поддержка другого железа — в работе.
+- Сборка **userdebug**, SELinux **Enforcing** проверен на `e3000n`
+  (AMD, 2026-11-05) и Intel H81M (2026-11-07); текущие сборки —
+  release-keys, `ro.build.tags=release-keys`.
+- Шифрование данных не настроено. Уровень патчей безопасности — на момент
+  синхронизации LineageOS 23.2.
+- `system.img` ~5,8 ГБ (near size limit); состав пакетов расширять осторожно.
+- Обязательность SSE4.2 не подтверждена окончательно; поддержка другого
+  железа — в работе.
+- После OTA возможен рассинхрон WMS↔InputDispatcher (ANR «no focused
+  window» на первом key); в текущих сборках есть workaround через
+  `display-fixups.sh` (`wm size ±1`), полноценный фикс в WMS — в работе.
+- Long-running YouTube TV на ARM-трансляторе исчерпывает 4-МиБ code pool
+  за ~28–55 ч; обход — периодический restart приложения.
+- Delta OTA для устройств с add-on не поддерживается (add-on меняет
+  `/system`, source hash не совпадает); публикуется full OTA.
 - Play Store, YouTube TV, образы ChromeOS/google_apis **не публикуются**:
   их скачивает пользователь (ссылки в приложении/`LINKS.txt`).
+- Два ТВ разведены портами RTP (5004/5006); каждый сендер имеет один SSRC.
 
 ## Лицензии
 

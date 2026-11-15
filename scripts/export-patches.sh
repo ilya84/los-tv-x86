@@ -1,6 +1,8 @@
 #!/bin/sh
 # Перегенерировать patches/ из веток los-tv рабочего дерева.
 # Запускать на сборочной VM, где лежит ./patches этого репозитория.
+# Для проектов с squash-веткой публикации (pub-next, pub-new,
+# pub/los-tv) экспортируется она, а не последний локальный коммит los-tv.
 #
 #   ./scripts/export-patches.sh [путь-к-дереву]
 set -e
@@ -44,7 +46,16 @@ for p in $PROJECTS; do
     [ -d "$TREE/$p" ] || { echo "skip $p"; continue; }
     out="$HERE/patches/$p"
     mkdir -p "$out"
-    git -C "$TREE/$p" format-patch -1 --no-signature -o "$out" los-tv >/dev/null
+    # Local los-tv branches may contain several commits; the public branch is
+    # the squashed single commit. Prefer the newest publication branch.
+    ref=los-tv
+    for cand in pub-next pub-new pub/los-tv; do
+        if git -C "$TREE/$p" rev-parse --verify -q "refs/heads/$cand" >/dev/null 2>&1; then
+            ref=$cand
+            break
+        fi
+    done
+    git -C "$TREE/$p" format-patch -1 --no-signature -o "$out" "$ref" >/dev/null
     f=$(ls "$out"/*.patch | head -1)
     printf '%s\t%s\n' "$p" "${f#$HERE/}" >> "$HERE/patches/series"
     echo "ok $p"

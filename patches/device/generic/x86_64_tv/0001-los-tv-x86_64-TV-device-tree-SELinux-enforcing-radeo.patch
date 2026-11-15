@@ -1,9 +1,18 @@
-From 01491285442842ac8c2641ffbeca078ce20438da Mon Sep 17 00:00:00 2001
+From 8c17122c14812e603f374c42f411d94ed9e491c1 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
-Date: Fri, 13 Nov 2026 10:06:15 +1000
-Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
- network OTA, addon uses installed YouTube APK)
+Date: Sun, 15 Nov 2026 11:43:07 +1000
+Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube payload sync,
+ Enforcing OTA)
 
+Squashed publication branch. Includes:
+- native AUDIO_SOURCE_REMOTE_SUBMIX RTP sender and TV Settings screen;
+- SELinux Enforcing policy for x86 media/audio, bootctl and /boot labels;
+- A/B full OTA under Enforcing, update_engine and bootctl fixes;
+- YouTube TV base+split preinstall with boot sync, sidecar and
+  downgrade guard;
+- bt_hotplug watchdog, preinstall scripts, GRUB/recovery integration;
+- add-on app and recovery installer integration;
+- post-OTA WMS/InputDispatcher focus recovery workaround.
 ---
  .gitignore                                    |    11 +-
  AndroidProducts.mk                            |     8 +-
@@ -12,23 +21,24 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  addon/Android.bp                              |    32 +
  ...roid.hardware.drm-service-lazy.widevine.rc |    12 +
  addon/links.txt                               |    16 +
- addon/los-tv-addon-boot.sh                    |   313 +
- addon/los-tv-addon.sh                         |   756 +
+ addon/los-tv-addon-boot.sh                    |   316 +
+ addon/los-tv-addon.sh                         |   856 +
  addon/los-tv-gpt.cpp                          |   132 +
  addon/los-tv-msg.cpp                          |   253 +
  ..._android.hardware.drm-service.widevine.xml |    10 +
  addon/ndk-files.txt                           |    87 +
  ...rivapp-permissions-com.android.vending.xml |    77 +
  addonapp/Android.bp                           |    21 +
- addonapp/AndroidManifest.xml                  |    42 +
+ addonapp/AndroidManifest.xml                  |    49 +
  addonapp/libs/core-3.5.3.jar                  |   Bin 0 -> 607650 bytes
  .../privapp-permissions-org.los.tv.addon.xml  |    17 +
  addonapp/res/color/btn_text.xml               |     6 +
  addonapp/res/drawable/btn_bg.xml              |    31 +
  addonapp/res/drawable/ic_launcher.png         |   Bin 0 -> 3016 bytes
- addonapp/res/values/strings.xml               |    52 +
+ addonapp/res/values/strings.xml               |    54 +
  .../src/org/los/tv/addon/DownloadService.java |   289 +
  .../src/org/los/tv/addon/MainActivity.java    |   593 +
+ .../src/org/los/tv/addon/RebootActivity.java  |    68 +
  audio_sender/Android.bp                       |    33 +
  audio_sender/audio_sender.cpp                 |   435 +
  audio_sender/audio_sender.rc                  |    17 +
@@ -41,17 +51,17 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  .../common/{Android.bp.bak => Android.bp}     |     0
  glodroid/device_glodroid.mk                   |     1 -
  ids/{Android.bp.bak => Android.bp}            |     0
- ids/pci.ids                                   | 43461 ++++++++++++++++
+ ids/pci.ids                                   | 43516 ++++++++++++++++
  ids/usb.ids                                   | 25705 +++++++++
  init.fstab.sh                                 |     7 +-
  init.recovery.sh                              |   153 +
  init.recovery.x86.rc                          |    15 +
  init.sh                                       |    94 +-
- init.x86.rc                                   |    16 +
+ init.x86.rc                                   |    28 +
  keylayout/Generic.kl                          |   496 +
  kmsglog/los-tv-kmsglog                        |   Bin 0 -> 9216 bytes
  kmsglog/los-tv-kmsglog.c                      |    60 +
- kmsglog/los-tv-kmsglog.rc                     |    42 +
+ kmsglog/los-tv-kmsglog.rc                     |    44 +
  libinit/{Android.bp.bak => Android.bp}        |     0
  librecovery_ui/{Android.bp.bak => Android.bp} |     0
  ...e_x86_64_tablet.mk => lineage_x86_64_tv.mk |    34 +-
@@ -66,11 +76,11 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  prebuilt/Android.bp                           |   241 +
  prebuilt/README.md                            |    59 +
  prebuilt/addon-autorestore.rc                 |     7 +
- prebuilt/addon-autorestore.sh                 |    68 +
+ prebuilt/addon-autorestore.sh                 |   191 +
  prebuilt/checkin-enabler.rc                   |     8 +
  prebuilt/checkin-enabler.sh                   |    30 +
  prebuilt/display-fixups.rc                    |     9 +
- prebuilt/display-fixups.sh                    |   169 +
+ prebuilt/display-fixups.sh                    |   222 +
  prebuilt/los-tv-addon-check.sh                |    54 +
  prebuilt/los-tv-addon-notify.sh               |    12 +
  prebuilt/los-tv-addon-state.rc                |    11 +
@@ -80,7 +90,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  ...rivapp-permissions-com.android.vending.xml |    77 +
  prebuilt/tvres-notify.rc                      |     9 +
  prebuilt/tvres-notify.sh                      |    34 +
- prebuilt/user/preinstall-apps.sh              |   177 +
+ prebuilt/user/preinstall-apps.sh              |   197 +
  .../system/lib/firmware/rtl_nic/rtl8105e-1.fw |   Bin 0 -> 2076 bytes
  .../system/lib/firmware/rtl_nic/rtl8106e-1.fw |   Bin 0 -> 1856 bytes
  .../system/lib/firmware/rtl_nic/rtl8106e-2.fw |   Bin 0 -> 832 bytes
@@ -124,30 +134,32 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  recovery/root/system/lib/modules/cdc_ether.ko |   Bin 0 -> 34192 bytes
  .../root/system/lib/modules/rndis_host.ko     |   Bin 0 -> 28896 bytes
  scripts/{Android.bp.bak => Android.bp}        |     7 +
- scripts/boot-mode-selection.sh                |    11 +-
- scripts/los-tv-boot-mode.sh                   |    59 +
+ scripts/boot-mode-selection.sh                |    23 +-
+ scripts/los-tv-boot-mode.sh                   |    63 +
  seccomp/mediaswcodec.policy                   |     1 +
  .../thermal-daemon/hal_thermal_intel.te       |     3 +
  sepolicy/plat_private/audio_sender.te         |    51 +
+ sepolicy/plat_private/file.te                 |     1 -
  sepolicy/plat_private/file_contexts           |    36 +-
  sepolicy/plat_private/genfs_contexts          |     9 +-
- sepolicy/plat_private/los-tv-init.te          |    77 +
- sepolicy/plat_private/los-tv-kmsglog.te       |    27 +
+ sepolicy/plat_private/los-tv-init.te          |    85 +
+ sepolicy/plat_private/los-tv-kmsglog.te       |    33 +
  sepolicy/plat_private/los-tv.te               |    70 +
  sepolicy/plat_private/property.te             |     8 +
  sepolicy/plat_private/property_contexts       |     5 +
  sepolicy/plat_private/surfaceflinger.te       |    21 +-
  sepolicy/plat_private/ueventd.te              |     7 +
  sepolicy/plat_private/vold.te                 |     6 +
+ sepolicy/public/file.te                       |     4 +
  sepolicy/vendor/hal_audio.te                  |     7 +
  sepolicy/vendor/hal_drm_widevine.te           |    12 +
- sepolicy/vendor/los-tv.te                     |    41 +
+ sepolicy/vendor/los-tv.te                     |    47 +
  sepolicy/vendor/property_contexts             |     3 +
  vendorsetup.sh                                |     1 -
  wireless-regdb/{Android.bp.bak => Android.bp} |     0
  wireless-regdb/regulatory.db                  |   Bin 0 -> 6348 bytes
  wireless-regdb/regulatory.db.p7s              |   Bin 0 -> 1085 bytes
- 142 files changed, 76195 insertions(+), 92 deletions(-)
+ 145 files changed, 76678 insertions(+), 95 deletions(-)
  create mode 100644 addon/Android.bp
  create mode 100644 addon/android.hardware.drm-service-lazy.widevine.rc
  create mode 100644 addon/links.txt
@@ -168,6 +180,7 @@ Subject: [PATCH] los-tv: x86_64 TV device tree (RTP, YouTube preinstall,
  create mode 100644 addonapp/res/values/strings.xml
  create mode 100644 addonapp/src/org/los/tv/addon/DownloadService.java
  create mode 100644 addonapp/src/org/los/tv/addon/MainActivity.java
+ create mode 100644 addonapp/src/org/los/tv/addon/RebootActivity.java
  create mode 100644 audio_sender/Android.bp
  create mode 100644 audio_sender/audio_sender.cpp
  create mode 100644 audio_sender/audio_sender.rc
@@ -493,10 +506,10 @@ index 0000000..01e2e5e
 +L|youtube_apkmirror|YouTube TV — APKMirror|https://www.apkmirror.com/apk/google-inc/youtube-for-android-tv-android-tv/|||Нужен bundle для arm64-v8a (файл .apkm)
 diff --git a/addon/los-tv-addon-boot.sh b/addon/los-tv-addon-boot.sh
 new file mode 100644
-index 0000000..6ea0ba8
+index 0000000..0c76855
 --- /dev/null
 +++ b/addon/los-tv-addon-boot.sh
-@@ -0,0 +1,313 @@
+@@ -0,0 +1,316 @@
 +#!/system/bin/sh
 +#
 +# los-tv: драйвер установки проприетарных компонентов из recovery.
@@ -647,6 +660,7 @@ index 0000000..6ea0ba8
 +    [ -n "$PLAYAPK" ] && ln -sf "$PLAYAPK" "$WORK/apks/$(basename "$PLAYAPK")"
 +    [ -n "$YTAPK" ] && ln -sf "$YTAPK" "$WORK/apks/$(basename "$YTAPK")"
 +    [ -n "$YTSPLIT" ] && ln -sf "$YTSPLIT" "$WORK/apks/YouTubeTV-split_config.arm64_v8a.apk"
++    [ -n "$YTVER" ] && ln -sf "$YTVER" "$WORK/apks/YouTubeTV.versionCode"
 +    return 0
 +}
 +
@@ -700,12 +714,14 @@ index 0000000..6ea0ba8
 +PLAYAPK=$(find_first 'PlayStore-TV.apk' '*vending*.apk' '*PlayStore*.apk' || true)
 +YTAPK=$(find_first 'YouTube-TV.apk' '*youtube.tv*.apkm' '*youtube.tv*.apk' 'YouTube*.apk' || true)
 +YTSPLIT=$(find_first 'YouTubeTV-split_config.arm64_v8a.apk' '*-split_config.arm64_v8a.apk' || true)
++YTVER=$(find_first 'YouTubeTV.versionCode' || true)
 +
 +[ -n "$CHROMEOS" ] && log "ChromeOS: $CHROMEOS"
 +[ -n "$GA" ] && log "google_apis: $GA"
 +[ -n "$PLAYAPK" ] && log "Play Store APK: $PLAYAPK"
 +[ -n "$YTAPK" ] && log "YouTube TV APK: $YTAPK"
 +[ -n "$YTSPLIT" ] && log "YouTube TV split: $YTSPLIT"
++[ -n "$YTVER" ] && log "YouTube TV version sidecar: $YTVER"
 +[ -z "$YTSPLIT" ] && log "ВНИМАНИЕ: YouTube TV split не найден"
 +[ -f "$PAYLOAD" ] && log "payload: $PAYLOAD"
 +
@@ -812,10 +828,10 @@ index 0000000..6ea0ba8
 +finish 0
 diff --git a/addon/los-tv-addon.sh b/addon/los-tv-addon.sh
 new file mode 100644
-index 0000000..85b4728
+index 0000000..3192a56
 --- /dev/null
 +++ b/addon/los-tv-addon.sh
-@@ -0,0 +1,756 @@
+@@ -0,0 +1,856 @@
 +#!/system/bin/sh
 +#
 +# los-tv: установка проприетарных компонентов (Widevine + NDK translation).
@@ -1273,15 +1289,31 @@ index 0000000..85b4728
 +    log "microG установлен"
 +}
 +
++youtube_sidecar_version() {
++    sidecar=$1
++    base=$2
++    [ -f "$sidecar" ] && [ -f "$base" ] || return 1
++    set -- $(cat "$sidecar" 2>/dev/null)
++    case "${1:-}" in ''|*[!0-9]*) return 1;; esac
++    [ -n "${2:-}" ] || return 1
++    [ "$(sha256sum "$base" | cut -d' ' -f1)" = "$2" ] || return 1
++    echo "$1"
++}
++
++youtube_installed_version() {
++    sed -n 's/.*<package name="com.google.android.youtube.tv".*version="\([0-9]*\)".*/\1/p' \
++        /data/system/packages.xml 2>/dev/null | head -1
++}
++
 +install_youtube() {
 +    src=$1
 +    srcapk=
 +    apk=
 +    split=
++    yt_from_src=0
 +
-+    # Если YouTube уже установлен (например, из Play Store), его APK в
-+    # /data/app новее того, что лежит в /sdcard. Для preinstall берём именно
-+    # установленный APK, иначе после OTA можно получить VERSION_DOWNGRADE.
++    # Установленный APK ищем в /data/app; версию берём из packages.xml.
++    # В recovery pm/dumpsys недоступны.
 +    instdir=
 +    for d in /data/app/*/com.google.android.youtube.tv-* \
 +             /data/app/com.google.android.youtube.tv-*; do
@@ -1292,12 +1324,83 @@ index 0000000..85b4728
 +        fi
 +    done
 +
-+    if [ -n "$instdir" ]; then
-+        apk="$instdir/base.apk"
-+        [ -f "$instdir/split_config.arm64_v8a.apk" ] && \
-+            split="$instdir/split_config.arm64_v8a.apk"
++    instbase=
++    instsplit=
++    [ -n "$instdir" ] && instbase="$instdir/base.apk"
++    [ -n "$instdir" ] && [ -f "$instdir/split_config.arm64_v8a.apk" ] && \
++        instsplit="$instdir/split_config.arm64_v8a.apk"
++    # packages.xml на Android 16 — binary XML, поэтому versionCode может
++    # быть недоступен; тогда ниже сравниваем mtime APK.
++    inst_ver=$(youtube_installed_version || true)
++    case "${inst_ver:-}" in ''|*[!0-9]*) inst_ver= ;; esac
++
++    # Канонический источник на sdcard + sidecar versionCode/hash.
++    srcbase=
++    srcsplit=
++    srcver=
++    for d in "$src" "$CDROM/data/media/0/los-tv-proprietary" \
++             "$CDROM/los-tv-proprietary" /data/los-tv-proprietary; do
++        [ -f "$d/YouTube-TV.apk" ] || continue
++        if [ -z "$srcbase" ]; then
++            srcbase="$d/YouTube-TV.apk"
++            [ -f "$d/YouTubeTV-split_config.arm64_v8a.apk" ] && \
++                srcsplit="$d/YouTubeTV-split_config.arm64_v8a.apk"
++        fi
++        if [ -z "$srcver" ]; then
++            srcver=$(youtube_sidecar_version "$d/YouTubeTV.versionCode" "$srcbase" || true)
++        fi
++    done
++    if [ -n "$srcbase" ] && [ -z "$srcver" ] && [ -n "$instbase" ]; then
++        if [ "$(stat -c %Y "$srcbase" 2>/dev/null || echo 0)" -gt \
++             "$(stat -c %Y "$instbase" 2>/dev/null || echo 0)" ]; then
++            [ -n "$inst_ver" ] && srcver=$((inst_ver + 1))
++        else
++            srcver=0
++        fi
++    fi
++
++    use_src=0
++    if [ -n "$instbase" ]; then
++        if [ -n "$srcbase" ]; then
++            if [ -n "$inst_ver" ] && [ -n "$srcver" ]; then
++                [ "$srcver" -gt "$inst_ver" ] && use_src=1
++            elif [ "$(stat -c %Y "$srcbase" 2>/dev/null || echo 0)" -gt \
++                   "$(stat -c %Y "$instbase" 2>/dev/null || echo 0)" ]; then
++                use_src=1
++            fi
++        fi
++    elif [ -n "$srcbase" ]; then
++        if [ -n "$inst_ver" ] && [ -n "$srcver" ] && [ "$srcver" -lt "$inst_ver" ]; then
++            log "YouTube TV: sdcard $srcver < metadata $inst_ver (ghost) — preinstall пропущен"
++            rm -f "$sys/etc/preinstall/YouTubeTV.apk" \
++                  "$sys/etc/preinstall/YouTubeTV-split_config.arm64_v8a.apk" 2>/dev/null
++            return 0
++        fi
++        use_src=1
++    fi
++
++    if [ "$use_src" = "1" ] && [ ! -f "$srcsplit" ]; then
++        log "YouTube TV: sdcard новее, но split отсутствует — откат на installed"
++        use_src=0
++    fi
++
++    if [ "$use_src" = "1" ]; then
++        apk="$srcbase"
++        split="$srcsplit"
++        srcapk="$srcbase"
++        yt_from_src=1
++        log "YouTube TV: sdcard ${srcver:-?} > installed ${inst_ver:-?}; беру sdcard"
++    elif [ -n "$instbase" ]; then
++        apk="$instbase"
++        split="$instsplit"
 +        log "YouTube TV: использую установленный APK из $instdir"
-+    else
++    fi
++
++    if [ -z "$apk" ]; then
++        if [ -n "$srcbase" ]; then
++            log "YouTube TV: sdcard base без split и нет installed — пропускаю"
++            return 0
++        fi
 +        for f in "$src/YouTube-TV.apk" "$src"/*youtube.tv*.apkm "$src"/*youtube.tv*.apk "$src"/YouTube*.apk; do
 +            if [ -f "$f" ]; then srcapk=$f; break; fi
 +        done
@@ -1308,6 +1411,7 @@ index 0000000..85b4728
 +        log "YouTube TV: $(basename "$srcapk"), sha256 $(sha256sum "$srcapk" | cut -d" " -f1)"
 +
 +        apk=$srcapk
++        yt_from_src=1
 +        case "$srcapk" in
 +            *.apkm|*.zip)
 +                tmpd="$WORK/apkm"
@@ -1345,8 +1449,19 @@ index 0000000..85b4728
 +    fi
 +
 +    mkdir -p "$sys/etc/preinstall"
++    rm -f "$sys/etc/preinstall/YouTubeTV.versionCode"
 +    cp "$apk" "$sys/etc/preinstall/YouTubeTV.apk" || die "cp YouTube TV"
 +    chmod 644 "$sys/etc/preinstall/YouTubeTV.apk"
++    if [ "$yt_from_src" = "1" ] && [ -n "$srcver" ]; then
++        for d in "$src" "$CDROM/data/media/0/los-tv-proprietary" \
++                 "$CDROM/los-tv-proprietary" /data/los-tv-proprietary; do
++            if [ "$(youtube_sidecar_version "$d/YouTubeTV.versionCode" "$apk" 2>/dev/null || true)" = "$srcver" ]; then
++                cp "$d/YouTubeTV.versionCode" "$sys/etc/preinstall/YouTubeTV.versionCode" 2>/dev/null && \
++                    chmod 644 "$sys/etc/preinstall/YouTubeTV.versionCode"
++                break
++            fi
++        done
++    fi
 +    if [ -n "$split" ] && [ -f "$split" ]; then
 +        cp "$split" "$sys/etc/preinstall/YouTubeTV-split_config.arm64_v8a.apk" || \
 +            die "cp YouTube TV split"
@@ -1369,10 +1484,11 @@ index 0000000..85b4728
 +fi
 +PREINSTALL
 +    fi
-+    # Если прошлый preinstall отмечал YouTubeTV.done, а пакет потом исчез
-+    # (например, после смены слота), без снятия флага он не установится:
-+    # preinstall-apps.sh проверяет .done раньше, чем pm path.
-+    rm -f "$CDROM/data/misc/preinstall-apps/YouTubeTV.done" 2>/dev/null
++    # Снимаем .done только если ставим из sdcard (новую/ghost-версию).
++    # Если оставляем установленный APK, .done не трогаем.
++    if [ "$yt_from_src" = "1" ]; then
++        rm -f "$CDROM/data/misc/preinstall-apps/YouTubeTV.done" 2>/dev/null
++    fi
 +    log "YouTube TV добавлен в preinstall (установится при первой загрузке)"
 +}
 +
@@ -2190,10 +2306,10 @@ index 0000000..9c210c9
 +}
 diff --git a/addonapp/AndroidManifest.xml b/addonapp/AndroidManifest.xml
 new file mode 100644
-index 0000000..728e679
+index 0000000..ae331a0
 --- /dev/null
 +++ b/addonapp/AndroidManifest.xml
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,49 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 +    package="org.los.tv.addon">
@@ -2229,6 +2345,13 @@ index 0000000..728e679
 +                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
 +            </intent-filter>
 +        </activity>
++
++        <activity
++            android:name=".RebootActivity"
++            android:exported="true"
++            android:excludeFromRecents="true"
++            android:noHistory="true"
++            android:screenOrientation="landscape" />
 +
 +        <service
 +            android:name=".DownloadService"
@@ -13163,10 +13286,10 @@ HcmV?d00001
 
 diff --git a/addonapp/res/values/strings.xml b/addonapp/res/values/strings.xml
 new file mode 100644
-index 0000000..20caa3e
+index 0000000..93455e8
 --- /dev/null
 +++ b/addonapp/res/values/strings.xml
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,54 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<resources>
 +    <string name="app_name">Проприетарные компоненты</string>
@@ -13218,6 +13341,8 @@ index 0000000..20caa3e
 +
 +    <string name="links_file_header">los-tv: ссылки для проприетарных компонентов</string>
 +    <string name="links_file_footer">Правила выбора:\n— Play Store: версия для Android 16 (minAPI 34+), архитектура arm64-v8a или universal (arm64-v8a + x86_64).\n— YouTube TV: bundle для arm64-v8a (файл .apkm).\n— APK/APKM положите в /sdcard/los-tv-proprietary.\n— Два образа (ChromeOS и google_apis) приложение скачивает само; вручную их тоже можно положить в ту же папку.\n— Обязательные требования к образам: NDK translation для x86_64 (google_apis 36.1) и Widevine L3 для x86_64 (ChromeOS hatch).</string>
++    <string name="reboot_for_components_title">Проприетарные компоненты</string>
++    <string name="reboot_for_components">Перезагружаю для установки проприетарных компонентов</string>
 +</resources>
 diff --git a/addonapp/src/org/los/tv/addon/DownloadService.java b/addonapp/src/org/los/tv/addon/DownloadService.java
 new file mode 100644
@@ -14111,6 +14236,80 @@ index 0000000..a968a02
 +        } catch (Exception e) {
 +            return "";
 +        }
++    }
++}
+diff --git a/addonapp/src/org/los/tv/addon/RebootActivity.java b/addonapp/src/org/los/tv/addon/RebootActivity.java
+new file mode 100644
+index 0000000..b0347da
+--- /dev/null
++++ b/addonapp/src/org/los/tv/addon/RebootActivity.java
+@@ -0,0 +1,68 @@
++/*
++ * los-tv: full-screen message shown before the automatic reboot into recovery.
++ *
++ * On the first boot after an OTA the add-on restore script reboots silently
++ * to install Widevine/NDK.  This activity gives the user a readable message
++ * and keeps the screen on; the script waits 4 seconds before rebooting.
++ */
++package org.los.tv.addon;
++
++import android.app.Activity;
++import android.graphics.Color;
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.WindowManager;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++public class RebootActivity extends Activity {
++
++    private final Handler handler = new Handler(Looper.getMainLooper());
++    private final Runnable finishRunnable = new Runnable() {
++        @Override
++        public void run() {
++            finish();
++        }
++    };
++
++    @Override
++    protected void onCreate(Bundle savedInstanceState) {
++        super.onCreate(savedInstanceState);
++
++        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
++                | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
++                | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
++        getWindow().getDecorView().setSystemUiVisibility(
++                View.SYSTEM_UI_FLAG_FULLSCREEN
++                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
++                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
++
++        int pad = (int) (48 * getResources().getDisplayMetrics().density);
++
++        LinearLayout root = new LinearLayout(this);
++        root.setOrientation(LinearLayout.VERTICAL);
++        root.setGravity(Gravity.CENTER);
++        root.setBackgroundColor(Color.BLACK);
++        root.setPadding(pad, pad, pad, pad);
++
++        TextView message = new TextView(this);
++        message.setText(R.string.reboot_for_components);
++        message.setTextColor(Color.LTGRAY);
++        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
++        message.setGravity(Gravity.CENTER);
++        root.addView(message);
++
++        setContentView(root);
++        handler.postDelayed(finishRunnable, 8000);
++    }
++
++    @Override
++    protected void onDestroy() {
++        handler.removeCallbacks(finishRunnable);
++        super.onDestroy();
 +    }
 +}
 diff --git a/audio_sender/Android.bp b/audio_sender/Android.bp
@@ -15051,15 +15250,15 @@ rename from ids/Android.bp.bak
 rename to ids/Android.bp
 diff --git a/ids/pci.ids b/ids/pci.ids
 new file mode 100644
-index 0000000..c3c96be
+index 0000000..bfa0c0a
 --- /dev/null
 +++ b/ids/pci.ids
-@@ -0,0 +1,43461 @@
+@@ -0,0 +1,43516 @@
 +#
 +#	List of PCI IDs
 +#
-+#	Version: 2026.11.06
-+#	Date:    2026-11-06 03:15:02
++#	Version: 2026.11.14
++#	Date:    2026-11-14 03:15:02
 +#
 +#	Maintained by Albert Pool, Martin Mares, and other volunteers from
 +#	the PCI ID Project at https://pci-ids.ucw.cz/.
@@ -19657,11 +19856,11 @@ index 0000000..c3c96be
 +	9918  Trinity [Radeon HD 7600G]
 +	9919  Trinity [Radeon HD 7500G]
 +	991e  Bishop [Xbox One S APU]
-+	9920  Liverpool [Playstation 4 APU]
++	9920  Liverpool [Starsha]
 +	9921  Liverpool HDMI/DP Audio Controller
-+	9922  Starshp
-+	9923  Starsha2 [Kingston/Clayton]
-+	9924  Gladius
++	9922  Liverpool+ [Starsha]
++	9923  Liverpool2 [Starsha2]
++	9924  Gladius [Roma]
 +	9925  Kingston/Clayton/Jupiter/Gladius/Montego HDMI Controller
 +	9926  Jupiter
 +	9990  Trinity 2 [Radeon HD 7520G]
@@ -28729,6 +28928,7 @@ index 0000000..c3c96be
 +	2681  AD102 [RTX TITAN Ada]
 +	2684  AD102 [GeForce RTX 4090]
 +	2685  AD102 [GeForce RTX 4090 D]
++	2687  AD102 [GeForce RTX 4080]
 +	2689  AD102 [GeForce RTX 4070 Ti SUPER]
 +	26af  AD102 [PG137]
 +	26b1  AD102GL [RTX 6000 Ada Generation]
@@ -44498,7 +44698,7 @@ index 0000000..c3c96be
 +1ed2  FuriosaAI, Inc.
 +	0000  Warboy
 +	0001  RNGD
-+	0002  RNGD-Plus
++	0002  RNGD-P
 +	2222  RNGD-S
 +1ed3  Yeston
 +1ed5  Moore Threads Technology Co.,Ltd
@@ -45510,6 +45710,8 @@ index 0000000..c3c96be
 +		1ff2 0c11  10GE Ethernet Adapter 1160-2X
 +	10a2  NIC1160 Ethernet Controller Virtual Function Family
 +	10b1  NIC 1260 Ethernet Controller Family
++# NIC-ETH6Z0F-LP-2P 2x25GbE PCIe Network Adapter
++		193d 1037  NIC-ETH6Z0F-LP-2P
 +	10b2  NIC 1260 Ethernet Controller Virtual Function Family
 +	10b3  NIC 1260C Ethernet Controller Family
 +	10b4  NIC 1260C Ethernet Controller Virtual Function Family
@@ -45821,6 +46023,8 @@ index 0000000..c3c96be
 +20c0  ExpectedIT GmbH
 +20c1  Suzhou Yige Technology Co., Ltd.
 +	1234  YG Testchip
++# Vendor ID 20ca assigned by PCI-SIG.
++20ca  Hangzhou Hualan Microelectronique Co.,Ltd.
 +20d0  Telin Semiconductor (Wuhan) Co., Ltd.
 +	2001  PACIFIC-S1 NVMe SSD
 +20d2  Awide Labs LTD.
@@ -45918,8 +46122,36 @@ index 0000000..c3c96be
 +	0304  D35 Family [D3]
 +	0305  D35 Family [HC3]
 +2165  Dnotitia Inc.
++# Vendor ID 2167 assigned by PCI-SIG
++2167  Belling Yoroo Tech Co.. Ltd.
 +# Baovix Technology Co., Ltd vendor ID=2178
 +2178  Baovix Technology Co., Ltd
++	4000  M.2 Gen4 NVMe SSD
++	4200  N400 M.2 Gen4 NVMe SSD
++	5000  M.2 Gen4 NVMe SSD
++	5200  N500 M.2 Gen5 NVMe SSD
++	e400  U.2 Gen4 SSD
++	e410  U.2 Gen4 SSD
++	e500  U.2 Gen5 SSD
++	e510  U.2 Gen5 SSD
++	e520  U.2 Gen5 SSD
++	e600  U.2 Gen4 SSD
++	e660  U.2 Gen4 SSD
++	e800  U.2 Gen5 SSD
++	e820  U.2 Gen5 SSD
++	e830  U.2 Gen5 SSD
++217a  Huaxun Group Limited
++	0041  SharQ PCIE 4,0 1.92TB
++# PCIE 4.0 SSD 1.6TB
++	0042  PCIE 4.0 SSD 1.6TB
++	0512  SHARQ 005 1600GB
++	0513  SHARQ 005 1920GB
++	0514  SQ005 U.2 SSD 3.2TB
++	0515  SQ005 U.2 SSD 3.84TB
++	0516  SQ005 U.2 SSD 6.4TB
++	0517  SQ005 U.2 SSD 7.68TB
++	0518  SQ005 U.2 SSD 12.8TB
++	0519  SQ005 U.2 SSD 15.36TB
 +21b4  Hunan Goke Microelectronics Co., Ltd
 +21c3  21st Century Computer Corp.
 +22b8  Flex-Logix Technologies
@@ -57904,7 +58136,9 @@ index 0000000..c3c96be
 +	a137  DeckLink Studio 4K
 +	a138  Decklink SDI 4K
 +	a139  Intensity Pro 4K
++	a13a  Cintel Scanner
 +	a13b  DeckLink Micro Recorder
++	a13c  Avid Artist DNxIO
 +	a13d  DeckLink 4K Pro
 +	a13e  UltraStudio 4K Extreme
 +	a13f  DeckLink Quad 2
@@ -57913,9 +58147,29 @@ index 0000000..c3c96be
 +	a142  UltraStudio HD Mini
 +	a143  DeckLink Mini Recorder 4K
 +	a144  DeckLink Mini Monitor 4K
++	a147  Avid Artist DNxIQ
 +	a148  DeckLink SDI Micro
 +	a14b  DeckLink 8K Pro
 +	a14e  DeckLink Quad HDMI Recorder
++	a14f  UltraStudio 4K Mini
++	a150  Avid Artist DNxID
++	a154  UltraStudio Monitor 3G
++	a155  UltraStudio Recorder 3G
++	a158  DeckLink Mini Monitor HD
++	a159  DeckLink Mini Recorder HD
++	a15c  DeckLink IP HD
++	a15d  DeckLink IP HD Optical
++	a15e  DeckLink IP/SDI HD
++	a15f  DeckLink 8K Pro Mini
++	a160  Media Player 10G
++	a162  DeckLink IP 100G
++	a163  ATEM Mini Extreme ISO G2
++	a165  UltraStudio Mini Recorder 12G
++	a166  UltraStudio Mini Monitor 12G
++	a167  UltraStudio Mini Replay 12G
++	a170  UltraStudio Express Monitor 3G
++	a171  UltraStudio Express Recorder 3G
++	a172  UltraStudio Express HD
 +	a1ff  eGPU RX580
 +c001  TSI Telsys
 +c0a9  Micron/Crucial Technology
@@ -84646,10 +84900,21 @@ index 85013d1..6003b01 100644
  		do_init
  		;;
 diff --git a/init.x86.rc b/init.x86.rc
-index c7213ef..8a5bade 100644
+index c7213ef..ab4cc84 100644
 --- a/init.x86.rc
 +++ b/init.x86.rc
-@@ -44,7 +44,16 @@ on post-fs
+@@ -38,13 +38,27 @@ on fs
+     mount_all /fstab.${ro.hardware}
+ 
+ on post-fs
++    # los-tv: /boot is a separate ext4 mount and is not covered by the root
++    # restorecon. Label it and /boot/grub so the bootctl HAL can update
++    # android.cfg when switching A/B slots (otherwise unlabeled:dir denial).
++    restorecon /boot
++    restorecon_recursive /boot/grub
+     exec u:r:init:s0 -- /system/bin/logwrapper /system/bin/sh /system/etc/init.sh
+ 
+ on post-fs
      chmod 0664 /dev/ion
      chown system system /dev/ion
  
@@ -84666,7 +84931,17 @@ index c7213ef..8a5bade 100644
      # Create the directories used by the Wireless subsystem
      mkdir /data/vendor/wifi 0771 wifi wifi
      mkdir /data/vendor/wifi/wpa 0770 wifi wifi
-@@ -116,6 +125,7 @@ service kmsg_fetch /system/bin/sh /system/etc/init.sh kmsg
+@@ -62,6 +76,9 @@ on post-fs-data
+     mkdir /data/vendor/thermal-daemon 0660 system system
+ 
+ on boot
++    # los-tv: update_engine is disabled in AOSP rc and the
++    # ro.boot.slot_suffix property trigger does not fire on this init.
++    start update_engine
+     setprop ro.radio.use-ppp yes
+     setprop status.battery.state Slow
+     setprop status.battery.level 5
+@@ -116,6 +133,7 @@ service kmsg_fetch /system/bin/sh /system/etc/init.sh kmsg
  service vendor.boot-mode-selection /vendor/bin/boot-mode-selection.sh ${sys.shutdown.requested}
      user root
      group root
@@ -84674,7 +84949,18 @@ index c7213ef..8a5bade 100644
      disabled
      oneshot
  
-@@ -194,6 +204,12 @@ on property:sys.shutdown.requested=*
+@@ -182,6 +200,10 @@ on property:system_init.startsurfaceflinger=0
+ on property:sys.boot_completed=1
+     start zram_setup
+     write /proc/sys/kernel/ctrl-alt-del 0
++    # los-tv: android.cfg may be recreated at shutdown after post-fs restorecon.
++    # Force the label again once boot is complete; bootctl HAL needs it later.
++    exec u:r:init:s0 -- /system/bin/restorecon -F /boot
++    exec u:r:init:s0 -- /system/bin/restorecon -R -F /boot/grub
+     exec u:r:init:s0 -- /system/bin/logwrapper /system/bin/sh /system/etc/init.sh bootcomplete
+ 
+ on property:net.dns1=*
+@@ -194,6 +216,12 @@ on property:sys.shutdown.requested=*
      start vendor.boot-mode-selection
      wait_for_prop vendor.boot-mode-selection.complete true
  
@@ -85283,10 +85569,10 @@ index 0000000..dc24971
 +}
 diff --git a/kmsglog/los-tv-kmsglog.rc b/kmsglog/los-tv-kmsglog.rc
 new file mode 100644
-index 0000000..85c7587
+index 0000000..01cf9d3
 --- /dev/null
 +++ b/kmsglog/los-tv-kmsglog.rc
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,44 @@
 +# los-tv: диагностика — persistent kmsg + logcat (переживают watchdog reset).
 +service los-tv-kmsglog /system/bin/los-tv-kmsglog
 +    class core
@@ -85294,12 +85580,14 @@ index 0000000..85c7587
 +    group root
 +    seclabel u:r:los_tv_kmsglog:s0
 +
-+# los-tv: disabled (the -f logger grew to hundreds of MB across restarts)
-+#service los-tv-logcat /system/bin/logcat -b all -v threadtime -f /data/misc/los_tv_kmsg/logcat.log -r 4096 -n 2
-+#    class core
-+#    user root
-+#    group root log
-+#    seclabel u:r:los_tv_kmsglog:s0
++# los-tv: persistent logcat with bounded rotation (2 MB x 2 files).
++# Kept enabled: the log survives watchdog/OTA reboots and is needed to
++# diagnose the WMS/InputDispatcher focus desync after updates.
++service los-tv-logcat /system/bin/logcat -b all -v threadtime -f /data/misc/los_tv_kmsg/logcat.log -r 2048 -n 2
++    class core
++    user root
++    group root log
++    seclabel u:r:los_tv_kmsglog:s0
 +
 +
 +service los-tv-props /system/bin/getprop
@@ -86910,10 +87198,10 @@ index 0000000..6f4bc5a
 +    exec u:r:su:s0 root root -- /system/bin/sh /system/bin/addon-autorestore.sh
 diff --git a/prebuilt/addon-autorestore.sh b/prebuilt/addon-autorestore.sh
 new file mode 100644
-index 0000000..455394f
+index 0000000..cd20a12
 --- /dev/null
 +++ b/prebuilt/addon-autorestore.sh
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,191 @@
 +#!/system/bin/sh
 +#
 +# los-tv: восстановление проприетарных компонентов после OTA (2026-11-01).
@@ -86953,6 +87241,120 @@ index 0000000..455394f
 +MARKER="$GRUBDIR/addon-pending"
 +ATTEMPTS_FILE="$GRUBDIR/addon-attempts"
 +
++# --- YouTube payload sync -------------------------------------------------
++# Keep /sdcard/los-tv-proprietary up to date with the installed YouTube while
++# the system is healthy. This runs on every boot, not only before the add-on
++# recovery reboot: if /data/app becomes a ghost after an OTA, there is no APK
++# left to copy at that point.
++YT_DIR=/sdcard/los-tv-proprietary
++YT_BASE="$YT_DIR/YouTube-TV.apk"
++YT_SPLIT="$YT_DIR/YouTubeTV-split_config.arm64_v8a.apk"
++YT_VER="$YT_DIR/YouTubeTV.versionCode"
++
++yt_log() { echo "$LOG_TAG: $*" | log -t "$LOG_TAG" -p i; }
++
++# versionCode is trusted only if it matches the base APK currently on sdcard
++yt_sidecar_version() {
++    [ -f "$YT_VER" ] && [ -f "$YT_BASE" ] || return 1
++    set -- $(cat "$YT_VER" 2>/dev/null)
++    case "${1:-}" in ''|*[!0-9]*) return 1;; esac
++    [ -n "${2:-}" ] || return 1
++    [ "$(sha256sum "$YT_BASE" | cut -d' ' -f1)" = "$2" ] || return 1
++    echo "$1"
++}
++
++sync_youtube_payload() {
++    [ -d /sdcard ] || return 0
++    [ -d "$YT_DIR" ] || mkdir -p "$YT_DIR" 2>/dev/null || return 0
++
++    paths=$(pm path com.google.android.youtube.tv 2>/dev/null | sed 's/^package://')
++    [ -n "$paths" ] || {
++        yt_log "YouTube not installed/ghost; payload sync skipped"
++        return 0
++    }
++    base=$(printf '%s\n' "$paths" | grep '/base.apk$' | head -1)
++    split=$(printf '%s\n' "$paths" | grep '/split_config.arm64_v8a.apk$' | head -1)
++    [ -n "$base" ] && [ -f "$base" ] || {
++        yt_log "YouTube base path missing; payload sync skipped"
++        return 0
++    }
++
++    inst_ver=$(dumpsys package com.google.android.youtube.tv 2>/dev/null | \
++        sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1)
++    case "${inst_ver:-}" in
++        ''|*[!0-9]*) yt_log "YouTube versionCode unavailable; payload sync skipped"; return 0 ;;
++    esac
++
++    sd_ver=$(yt_sidecar_version 2>/dev/null || true)
++    if [ -n "$sd_ver" ] && [ -f "$YT_SPLIT" ] && [ -n "$split" ] && \
++       [ "$sd_ver" -ge "$inst_ver" ]; then
++        yt_log "sdcard YouTube $sd_ver >= installed $inst_ver; keeping payload"
++        return 0
++    fi
++
++    # Sidecar missing but files equal to installed: restore the sidecar.
++    if [ -z "$sd_ver" ] && [ -f "$YT_BASE" ] && [ -f "$YT_SPLIT" ] && \
++       [ -n "$split" ] && \
++       [ "$(sha256sum "$YT_BASE" | cut -d' ' -f1)" = \
++         "$(sha256sum "$base" | cut -d' ' -f1)" ] && \
++       [ "$(sha256sum "$YT_SPLIT" | cut -d' ' -f1)" = \
++         "$(sha256sum "$split" | cut -d' ' -f1)" ]; then
++        printf '%s %s\n' "$inst_ver" "$(sha256sum "$YT_BASE" | cut -d' ' -f1)" \
++            > "$YT_VER.tmp.$$" && mv -f "$YT_VER.tmp.$$" "$YT_VER"
++        chmod 644 "$YT_VER" 2>/dev/null || true
++        yt_log "sdcard YouTube matches installed; sidecar restored"
++        return 0
++    fi
++
++    # No/invalid sidecar: keep a timestamp-newer sdcard APK (user-provided),
++    # but only if its split is present too.
++    if [ -z "$sd_ver" ] && [ -f "$YT_BASE" ] && [ -f "$YT_SPLIT" ] && \
++       [ "$(stat -c %Y "$YT_BASE" 2>/dev/null || echo 0)" -gt \
++         "$(stat -c %Y "$base" 2>/dev/null || echo 0)" ]; then
++        yt_log "sdcard YouTube is newer by mtime; keeping payload"
++        return 0
++    fi
++
++    tmpb="$YT_BASE.tmp.$$"
++    tmps="$YT_SPLIT.tmp.$$"
++    if ! cp "$base" "$tmpb" 2>/dev/null; then
++        rm -f "$tmpb" "$tmps"
++        yt_log "copy YouTube base to sdcard failed"
++        return 0
++    fi
++    if [ -n "$split" ]; then
++        if ! cp "$split" "$tmps" 2>/dev/null; then
++            rm -f "$tmpb" "$tmps"
++            yt_log "copy YouTube split to sdcard failed"
++            return 0
++        fi
++    fi
++    chmod 660 "$tmpb" 2>/dev/null || true
++    [ -n "$split" ] && chmod 660 "$tmps" 2>/dev/null || true
++    chown root:everybody "$tmpb" 2>/dev/null || true
++    [ -n "$split" ] && chown root:everybody "$tmps" 2>/dev/null || true
++
++    mv -f "$tmpb" "$YT_BASE" || { rm -f "$tmpb" "$tmps"; return 0; }
++    if [ -n "$split" ]; then
++        mv -f "$tmps" "$YT_SPLIT" || { rm -f "$tmps" "$YT_BASE"; return 0; }
++    else
++        rm -f "$YT_SPLIT"
++    fi
++    printf '%s %s\n' "$inst_ver" "$(sha256sum "$YT_BASE" | cut -d' ' -f1)" \
++        > "$YT_VER.tmp.$$" && mv -f "$YT_VER.tmp.$$" "$YT_VER"
++    chmod 644 "$YT_VER" 2>/dev/null || true
++    sync
++    yt_log "copied YouTube $inst_ver to sdcard payload"
++}
++
++sync_youtube_payload
++
++# Used by preinstall-apps.sh after YouTube was just installed on first boot:
++# do the payload sync and exit without touching addon markers/reboot.
++if [ "${YOUTUBE_SYNC_ONLY:-0}" = "1" ]; then
++    exit 0
++fi
++
 +if [ -z "$PAYLOAD" ]; then
 +    rm -f "$MARKER"
 +    echo "$LOG_TAG: payload not found, nothing to do" | log -t "$LOG_TAG" -p i
@@ -86971,6 +87373,15 @@ index 0000000..455394f
 +    echo "$LOG_TAG: already tried $attempts times, not rebooting (check payload)" | \
 +        log -t "$LOG_TAG" -p w
 +    exit 0
++fi
++
++# The reboot into recovery is silent.  On a first boot after an OTA show a
++# readable message from the add-on app (base system) and give the user a few
++# seconds before rebooting.  If the app is missing (older image), just reboot.
++if [ -x /system/bin/am ] && /system/bin/pm path org.los.tv.addon >/dev/null 2>&1; then
++    if /system/bin/am start --user 0 -n org.los.tv.addon/.RebootActivity >/dev/null 2>&1; then
++        sleep 4
++    fi
 +fi
 +
 +echo "$LOG_TAG: components missing ($PAYLOAD), scheduling recovery install (attempt $((attempts + 1)))" | \
@@ -87049,10 +87460,10 @@ index 0000000..02d9f95
 +    exec_background u:r:su:s0 root root -- /system/bin/sh /system/bin/display-fixups.sh
 diff --git a/prebuilt/display-fixups.sh b/prebuilt/display-fixups.sh
 new file mode 100755
-index 0000000..11f76fb
+index 0000000..858a28a
 --- /dev/null
 +++ b/prebuilt/display-fixups.sh
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,222 @@
 +#!/system/bin/sh
 +# Android TV: базовое разрешение кадра (1080p/720p) + необязательная смена
 +# физического режима телевизора.
@@ -87220,6 +87631,59 @@ index 0000000..11f76fb
 +        fi
 +    fi
 +fi
++
++# ---------- 5. WMS ↔ InputDispatcher focus desync -------------------------
++# After an OTA the launcher window can be WMS-focused and fully drawn while
++# InputDispatcher still has inputConfig=NOT_VISIBLE for it: the focus request
++# is sent before the OPEN transition and is not repeated after Finish
++# Transition. The first key event then triggers "Application does not have a
++# focused window" (ANR) and the launcher only appears after user input.
++# A display configuration change makes WMS rebuild InputWindowHandles.
++# Only act when WMS already focuses the launcher but InputDispatcher doesn't.
++fix_input_focus_desync() {
++    i=0
++    while [ "$i" -lt 30 ]; do
++        if /system/bin/dumpsys window 2>/dev/null | \
++                /system/bin/grep -q 'mCurrentFocus=.*org.lineageos.tv.launcher'; then
++            if /system/bin/dumpsys input 2>/dev/null | \
++                    /system/bin/grep -A1 '^  FocusedWindows:' | \
++                    /system/bin/grep -q 'name='; then
++                log "input focus: launcher focused, ok"
++                return 0
++            fi
++            cur=$(/system/bin/wm size 2>/dev/null | \
++                /system/bin/sed -n 's/.*Override size: //p')
++            [ -n "$cur" ] || cur=$(/system/bin/wm size 2>/dev/null | \
++                /system/bin/sed -n 's/.*Physical size: //p')
++            if [ -z "$cur" ]; then
++                log "!! input focus desync: cannot read display size"
++                return 1
++            fi
++            w=${cur%x*}
++            h=${cur#*x}
++            log "!! input focus desync: WMS launcher, InputDispatcher none; forcing config change ($cur)"
++            /system/bin/wm size "$((w - 1))x$h"
++            /system/bin/sleep 1
++            /system/bin/wm size "${w}x$h"
++            /system/bin/sleep 2
++            if /system/bin/dumpsys input 2>/dev/null | \
++                    /system/bin/grep -A1 '^  FocusedWindows:' | \
++                    /system/bin/grep -q 'name='; then
++                log "input focus: fixed by config change"
++            else
++                log "!! input focus: still no InputDispatcher focus after config change"
++            fi
++            return 0
++        fi
++        /system/bin/sleep 2
++        i=$((i + 1))
++    done
++    log "input focus: launcher not WMS-focused after 60s, skip"
++    return 0
++}
++
++# exec_background at boot_completed: this may wait up to 60 s for the launcher.
++fix_input_focus_desync
 +
 +exit 0
 diff --git a/prebuilt/los-tv-addon-check.sh b/prebuilt/los-tv-addon-check.sh
@@ -87532,10 +87996,10 @@ index 0000000..a41cc12
 +exit 0
 diff --git a/prebuilt/user/preinstall-apps.sh b/prebuilt/user/preinstall-apps.sh
 new file mode 100644
-index 0000000..93c2941
+index 0000000..d5e9a09
 --- /dev/null
 +++ b/prebuilt/user/preinstall-apps.sh
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,197 @@
 +#!/system/bin/sh
 +# Предустановка приложений в /data (2026-10-13; состав — 2026-10-29)
 +#
@@ -87689,6 +88153,18 @@ index 0000000..93c2941
 +# YouTube есть requiredSplitTypes, одиночный base.apk даёт
 +# INSTALL_FAILED_MISSING_SPLIT.
 +if [ -f "$DIR/YouTubeTV.apk" ]; then
++    YT_SKIP=0
++    if [ -f "$DIR/YouTubeTV.versionCode" ]; then
++        YT_SDVER=$(sed -n 's/^\([0-9][0-9]*\) .*/\1/p' "$DIR/YouTubeTV.versionCode" | head -1)
++        YT_INSTVER=$(dumpsys package com.google.android.youtube.tv 2>/dev/null | \
++            sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1)
++        if [ -n "$YT_SDVER" ] && [ -n "$YT_INSTVER" ] && [ "$YT_SDVER" -lt "$YT_INSTVER" ]; then
++            log_preinstall "пропускаю YouTubeTV: sdcard $YT_SDVER < installed $YT_INSTVER (downgrade)"
++            echo "downgrade: sdcard $YT_SDVER < installed $YT_INSTVER" \
++                > "$FLAGDIR/YouTubeTV.failed" 2>/dev/null
++            YT_SKIP=1
++        fi
++    fi
 +    YTSPLIT="$DIR/YouTubeTV-split_config.arm64_v8a.apk"
 +    if [ ! -f "$YTSPLIT" ]; then
 +        # Старый add-on/recovery умел копировать только base. Не оставляем
@@ -87703,13 +88179,21 @@ index 0000000..93c2941
 +            fi
 +        done
 +    fi
-+    if [ -f "$YTSPLIT" ]; then
-+        install_app YouTubeTV com.google.android.youtube.tv \
-+            YouTubeTV.apk "$YTSPLIT"
-+    else
-+        log_preinstall "ВНИМАНИЕ: YouTubeTV.apk без split_config.arm64_v8a.apk — установка, скорее всего, упрётся в MISSING_SPLIT"
-+        install_app YouTubeTV com.google.android.youtube.tv YouTubeTV.apk
++    if [ "$YT_SKIP" = "0" ]; then
++        if [ -f "$YTSPLIT" ]; then
++            install_app YouTubeTV com.google.android.youtube.tv \
++                YouTubeTV.apk "$YTSPLIT"
++        else
++            log_preinstall "ВНИМАНИЕ: YouTubeTV.apk без split_config.arm64_v8a.apk — установка, скорее всего, упрётся в MISSING_SPLIT"
++            install_app YouTubeTV com.google.android.youtube.tv YouTubeTV.apk
++        fi
 +    fi
++fi
++
++# After first-boot YouTube install, refresh /sdcard payload immediately.
++# YOUTUBE_SYNC_ONLY makes addon-autorestore.sh exit before addon/reboot logic.
++if [ -f /system/bin/addon-autorestore.sh ]; then
++    YOUTUBE_SYNC_ONLY=1 /system/bin/sh /system/bin/addon-autorestore.sh >/dev/null 2>&1 || true
 +fi
 +
 +log_preinstall "готово; неудачных: $(ls $FLAGDIR/*.failed 2>/dev/null | wc -l)"
@@ -90008,10 +90492,25 @@ index 02aa77e..0b21a09 100644
      name: "set_iptsd_device",
      src: "set_iptsd_device",
 diff --git a/scripts/boot-mode-selection.sh b/scripts/boot-mode-selection.sh
-index 2a7eccd..82daf65 100644
+index 2a7eccd..ff1ad86 100644
 --- a/scripts/boot-mode-selection.sh
 +++ b/scripts/boot-mode-selection.sh
-@@ -27,15 +27,22 @@ if [ ! -w "$CFG_PATH" ]; then
+@@ -7,6 +7,14 @@ klog() {
+     echo "$0: $@" > /dev/kmsg
+ }
+ 
++# los-tv: the temp file created by the shell has no SELinux label. Relabel it
++# after every rewrite, otherwise bootctl HAL cannot read/write android.cfg
++# under Enforcing (unlabeled:dir/file denial).
++fix_cfg_label() {
++    chcon u:object_r:bootdir_file:s0 "$CFG_PATH" 2>/dev/null || \
++        restorecon -F "$CFG_PATH" 2>/dev/null || true
++}
++
+ if [ -z "$CFG_PATH" ]; then
+     if [ -f "/boot/grub/android.cfg" ]; then
+         CFG_PATH="/boot/grub/android.cfg"
+@@ -27,15 +35,22 @@ if [ ! -w "$CFG_PATH" ]; then
  fi
  
  # Determine boot mode from first argument
@@ -90036,12 +90535,30 @@ index 2a7eccd..82daf65 100644
  
  # First pass: Try to modify androidboot.mode
  found_android=0
+@@ -45,7 +60,7 @@ while IFS= read -r line; do
+         found_android=1
+     fi
+     printf '%s\n' "$line"
+-done < "$CFG_PATH" > "$CFG_PATH.tmp" && mv "$CFG_PATH.tmp" "$CFG_PATH"
++done < "$CFG_PATH" > "$CFG_PATH.tmp" && mv "$CFG_PATH.tmp" "$CFG_PATH" && fix_cfg_label
+ 
+ # Second pass: Fallback to MODE= if androidboot.mode wasn't found
+ if [ "$found_android" -eq 0 ]; then
+@@ -58,7 +73,7 @@ if [ "$found_android" -eq 0 ]; then
+             found_mode=1
+         fi
+         printf '%s\n' "$line"
+-    done < "$CFG_PATH" > "$CFG_PATH.tmp" && mv "$CFG_PATH.tmp" "$CFG_PATH"
++    done < "$CFG_PATH" > "$CFG_PATH.tmp" && mv "$CFG_PATH.tmp" "$CFG_PATH" && fix_cfg_label
+ 
+     if [ "$found_mode" -eq 0 ]; then
+         klog "Error: Neither androidboot.mode nor MODE= found in $CFG_PATH"
 diff --git a/scripts/los-tv-boot-mode.sh b/scripts/los-tv-boot-mode.sh
 new file mode 100644
-index 0000000..b982736
+index 0000000..fc8e61b
 --- /dev/null
 +++ b/scripts/los-tv-boot-mode.sh
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,63 @@
 +#!/vendor/bin/sh
 +#
 +# los-tv: маркер запрошенного режима загрузки для меню GRUB (2026-11-01).
@@ -90097,6 +90614,10 @@ index 0000000..b982736
 +if [ -f "$CFG" ] && [ -w "$CFG" ]; then
 +    sed -i "s/^MODE=.*/MODE=$mode/" "$CFG" 2>/dev/null && \
 +        klog "android.cfg MODE=$mode"
++    # los-tv: sed -i creates a new file; restore the bootdir_file label so
++    # bootctl HAL can update the slot under Enforcing.
++    chcon u:object_r:bootdir_file:s0 "$CFG" 2>/dev/null || \
++        restorecon -F "$CFG" 2>/dev/null || true
 +fi
 +
 +klog "mode=$mode (grub dir $GRUBDIR)"
@@ -90180,6 +90701,13 @@ index 0000000..0a517a5
 +get_prop(shell, audio_rtp_port_prop)
 +get_prop(shell, audio_rtp_state_prop)
 +get_prop(shell, audio_rtp_stats_prop)
+diff --git a/sepolicy/plat_private/file.te b/sepolicy/plat_private/file.te
+index f6c462c..3cfcb6e 100644
+--- a/sepolicy/plat_private/file.te
++++ b/sepolicy/plat_private/file.te
+@@ -1,2 +1 @@
+-type bootdir_file, file_type;
+ type esp_file, file_type;
 diff --git a/sepolicy/plat_private/file_contexts b/sepolicy/plat_private/file_contexts
 index bd8135f..e2ef1d6 100644
 --- a/sepolicy/plat_private/file_contexts
@@ -90246,10 +90774,10 @@ index 3d0ace5..5fd7453 100644
 +genfscon sysfs /devices/pci0000:00/0000:00:02.0 u:object_r:sysfs_gpu:s0
 diff --git a/sepolicy/plat_private/los-tv-init.te b/sepolicy/plat_private/los-tv-init.te
 new file mode 100644
-index 0000000..82ada27
+index 0000000..c886cab
 --- /dev/null
 +++ b/sepolicy/plat_private/los-tv-init.te
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,85 @@
 +# los-tv: init runs system binaries/scripts without a domain transition
 +# (logwrapper, init.sh, HAL services with system_file binaries).
 +allow init system_file:file { execute execute_no_trans };
@@ -90323,16 +90851,24 @@ index 0000000..82ada27
 +# mknod of misc-device resolves to misc_block_device via type_transition.
 +allow init misc_block_device:blk_file { create getattr setattr };
 +
++# los-tv: label /boot/grub at boot (restorecon) and let init update
++# /boot/grub/android.cfg from los-tv-boot-mode.sh. Without the label the
++# bootctl HAL cannot read/write it and SetActiveBootSlot fails under Enforcing.
++allow init bootdir_file:dir rw_dir_perms;
++allow init bootdir_file:file create_file_perms;
++allow init bootdir_file:lnk_file r_file_perms;
++allow init bootdir_file:{ dir file lnk_file } relabelto;
++
 +# los-tv: init.sh apexcodecs bind-mounts the radeon codec lists over
 +# /vendor/etc and over the media.swcodec apex list.
 +allow init vendor_configs_file:file { ioctl mounton };
 +allow init system_file:file mounton;
 diff --git a/sepolicy/plat_private/los-tv-kmsglog.te b/sepolicy/plat_private/los-tv-kmsglog.te
 new file mode 100644
-index 0000000..93fd885
+index 0000000..1097471
 --- /dev/null
 +++ b/sepolicy/plat_private/los-tv-kmsglog.te
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,33 @@
 +# los-tv: диагностический логгер /dev/kmsg -> /data/local/tmp/los-tv-kmsg.log
 +type los_tv_kmsglog, domain, coredomain;
 +type los_tv_kmsglog_exec, exec_type, system_file_type, file_type;
@@ -90347,7 +90883,13 @@ index 0000000..93fd885
 +allow los_tv_kmsglog kernel:system syslog_read;
 +
 +
-+allow los_tv_kmsglog los_tv_kmsg_data_file:dir { search write add_name };
++# logcat -f ... -r/-n: нужен readdir/remove_name для ротации, а также
++# sys_nice для setpriority. dac_override не выдаём: он запрещён
++# neverallow; вместо этого файл/каталог должны быть доступны по DAC.
++allow los_tv_kmsglog self:capability sys_nice;
++allow los_tv_kmsglog los_tv_kmsg_data_file:dir {
++    search read getattr write add_name remove_name rename
++};
 +type_transition los_tv_kmsglog system_data_file:file los_tv_kmsg_data_file "kmsg.log";
 +allow los_tv_kmsglog los_tv_kmsg_data_file:file create_file_perms;
 +
@@ -90515,6 +91057,17 @@ index 0000000..450fb62
 +
 +# misctrl reads /fstab.<product> from the initrd (tmpfs) to set up misc.
 +allow misctrl tmpfs:file r_file_perms;
+diff --git a/sepolicy/public/file.te b/sepolicy/public/file.te
+index ee8d61e..5e40f2b 100644
+--- a/sepolicy/public/file.te
++++ b/sepolicy/public/file.te
+@@ -1,2 +1,6 @@
+ type virtiofs, sdcard_type, fs_type, mlstrustedobject;
+ type ntfs3, sdcard_type, fs_type, mlstrustedobject;
++
++# /boot/grub: init/system_app and the boot control HAL read/write android.cfg.
++# Public because the vendor bootctl HAL also needs it.
++type bootdir_file, file_type;
 diff --git a/sepolicy/vendor/hal_audio.te b/sepolicy/vendor/hal_audio.te
 new file mode 100644
 index 0000000..61bf786
@@ -90548,10 +91101,10 @@ index 0000000..a930561
 +allow hal_drm_clearkey_aidl appdomain_tmpfs:file rw_file_perms;
 diff --git a/sepolicy/vendor/los-tv.te b/sepolicy/vendor/los-tv.te
 new file mode 100644
-index 0000000..e18afd8
+index 0000000..d789810
 --- /dev/null
 +++ b/sepolicy/vendor/los-tv.te
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,47 @@
 +typeattribute init system_executes_vendor_violators;
 +# los-tv (x86 TV): init/bootanim запускают vendor-бинари HAL (gatekeeper, media.c2).
 +# coredomain по neverallow не может открывать vendor_file, поэтому графика
@@ -90561,6 +91114,12 @@ index 0000000..e18afd8
 +# /fstab.<product> создаётся в initrd (tmpfs): его читают vold и bootctl HAL.
 +allow vold tmpfs:file r_file_perms;
 +allow hal_bootctl_default tmpfs:file r_file_perms;
++
++# los-tv: bootctl HAL меняет активный слот, переписывая /boot/grub/android.cfg.
++# /boot и grub-файлы должны быть размечены bootdir_file (это делает init в
++# on post-fs), иначе под Enforcing HAL получает denial на unlabeled:dir.
++allow hal_bootctl_default bootdir_file:dir r_dir_perms;
++allow hal_bootctl_default bootdir_file:file rw_file_perms;
 +
 +# Ядро грузит прошивки radeon из /vendor/firmware и модули из /system/lib/modules.
 +allow kernel vendor_file:file r_file_perms;
@@ -90711,7 +91270,4 @@ c<nyh3H?#G#Ool@W0xNGES?l*aXwnBE07tvTl>h($
 
 literal 0
 HcmV?d00001
-
--- 
-2.39.5
 

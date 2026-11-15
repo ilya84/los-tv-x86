@@ -6,6 +6,54 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-15 — production на release-keys, сетевой OTA, YouTube payload sync
+
+- `intel` переведён на releasekey прямым flash в неактивный `_b`:
+  build `1794665098`, `ro.build.tags=release-keys`, Enforcing; `_a`
+  (`1794305356`, testkey) сохранён как откат. После первого старта
+  bootctl/`/boot` label-persistence сработал, `android.cfg` получил
+  `u:object_r:bootdir_file:s0`.
+- Обнаружен и исправлен ghost YouTube на `intel`: preinstall брал с
+  `/sdcard` старый 7.30.302 при установленном 7.31.301 и падал
+  `INSTALL_FAILED_VERSION_DOWNGRADE`. Установлен base+split 7.31.301,
+  данные сохранены, sdcard/payload обновлён.
+- YouTube payload sync (device tree `3cc6260` + `c21e2ef`): на каждом
+  boot `addon-autorestore.sh` копирует installed base+split в
+  `/sdcard/los-tv-proprietary` (atomic, sidecar = versionCode + sha256
+  base). Recovery add-on сравнивает `/data/app` и sdcard по sidecar/mtime
+  и выбирает более новый источник; preinstall не ставит APK старее
+  installed. В recovery нет `awk` — sha256 через `cut`; после первого
+  boot-install вызывается sync с `YOUTUBE_SYNC_ONLY=1`. Ghost больше не
+  воспроизводится.
+- Опубликована OTA `1794665098`: 1 783 669 872 Б, md5
+  `15824a62cdb13fc2b8562dba8f8bc60a`, sha256
+  `a2d10acac22c22a7228cbf1e8c4e97a59184f2d54bd076571458f6ffcd1b7657`;
+  ISO `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso` (2 629 386 240 Б,
+  md5 `c301caaf3f1298010adfee350ca5c897`, sha256 `eba68070…f357`)
+  содержит тот же build.
+- Опубликована финальная OTA `1794703929`: 1 783 656 108 Б, md5
+  `f49913aa0d7940272812663224ddee56`, sha256 `660bf424…ac45`;
+  на `e3000n` recovery-addon отработал без `awk`, preinstall поставил
+  YouTube 7.31.301, post-preinstall sync прошёл, downgrade нет.
+- Сетевой OTA проверена на обоих стендах: полный цикл `update_engine`
+  под Enforcing (`kSuccess`, переключение слота, add-on), scheduled
+  daily auto-install (22:30), уведомление «Обновление установлено»,
+  `RebootActivity`, ротация persistent logcat 2 МБ × 2. Updater
+  запланирован на `intel` и `e3000n`.
+- WMS/InputDispatcher: ANR лаунчера после OTA разобран как рассинхрон
+  (WMS focused, `FocusedWindows=<none>`); добавлен workaround в
+  `display-fixups.sh` (`wm size ±1` при рассинхроне). Полноценный фикс
+  в WMS — следующий changeset.
+- RTP-звук разведён на два ТВ: `intel` → `192.168.5.150:5004`,
+  `e3000n` → `192.168.5.150:5006`; на audiohub два приёмника
+  (`tv-rtp.service`, `tv-rtp-2.service`), оба потока active.
+- Публикация: device tree `8c17122` (squashed: RTP, YouTube payload sync,
+  bootctl/`/boot` labels, WMS-workaround, RebootActivity), TvSettings
+  `1c8edb57`, aaropa `c5107b0`, Updater patch `4662599`,
+  system/sepolicy patch `5e09bcbf5`, bootable/recovery patch `2fd9aca`
+  (sideload auto-reboot on success); обновлены README, BUILD.md,
+  CHANGELOG и `patches/`.
+
 ## 2026-11-14 — OTA при Enforcing и опциональная автоустановка в Updater
 
 - Policy `update_engine` перенесена из `system_ext` в
@@ -78,34 +126,6 @@
   На `e3000n` установлена в `_b` (`kSuccess`), успешное уведомление
   «Обновление установлено…», после ребута ротация `logcat.log.1/.2`
   по 2 МБ.
-- Финальная OTA для перехода на OTA/Updater — `1794665098`:
-  1 783 669 872 Б, md5 `15824a62cdb13fc2b8562dba8f8bc60a`, sha256
-  `a2d10acac22c22a7228cbf1e8c4e97a59184f2d54bd076571458f6ffcd1b7657`;
-  опубликована, JSON обновлён, `lineage.updater.uri` внутри. ISO
-  `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso` (2 629 386 240 Б,
-  md5 `c301caaf3f1298010adfee350ca5c897`, sha256
-  `eba680705b705010d502750ab095b6e5b14c1833011e6de501dee13f7588f357`)
-  содержит тот же build. Для `intel` подготовлен прямой flash в
-  неактивный `_b` (`deploy/intel-direct-flash-20261115/`, system/kernel/
-  initrd/padded recovery + проверка md5/образа); текущий `_a` остаётся
-  откатом.
-- YouTube payload sync (device tree `3cc6260`): на каждом boot
-  `addon-autorestore.sh` копирует установленный base+split в
-  `/sdcard/los-tv-proprietary` (atomic, sidecar `YouTubeTV.versionCode`
-  = versionCode + sha256 base), если sdcard отсутствует, неполный или
-  старее. Recovery add-on сравнивает `/data/app` и sdcard по sidecar/
-  mtime и выбирает более новый источник; preinstall-apps.sh не ставит
-  APK старее installed (защита от `VERSION_DOWNGRADE`). Исправлен
-  ghost-сценарий intel 2026-11-15 (старый 7.30.302 с sdcard против
-  7.31.301 в PM). В recovery нет `awk` — sha256 извлекается через
-  `cut`; после первого boot-install `preinstall-apps.sh` вызывает
-  sync с `YOUTUBE_SYNC_ONLY=1`, чтобы sdcard обновился сразу, а не
-  только на следующей загрузке (`c21e2ef`).
-- OTA `1794703929`: 1 783 656 108 Б, md5
-  `f49913aa0d7940272812663224ddee56`, sha256
-  `660bf4241ab3cdaf00e8420e46542e1e4c86e8350a8dbb2911d4fd84aae7ac45`;
-  проверена на `e3000n` — recovery-addon без `awk`, preinstall YouTube
-  7.31.301, post-preinstall sync, без `VERSION_DOWNGRADE`.
 - На уже установленной `e3000n` обнаружен цикл `adb reboot sideload`:
   установленный `/boot/grub/grub.cfg` был старым и не подставлял для
   `MODE=sideload` `androidboot.mode=recovery` + `force_normal_boot=0`
@@ -499,6 +519,10 @@ BassOS/aaropa) в снапшот los-tv не входит; он остаётся
 - Шифрование данных, user-сборка — позже (пока под вопросом целесообразность).
 
 ## Публикация
+
+Текущие публичные коммиты (2026-11-15): device tree `8c17122`, aaropa
+`c5107b0`, TvSettings patch `1c8edb57`, bootable/recovery patch `2fd9aca`,
+Updater patch `4662599`, system/sepolicy patch `5e09bcbf5`.
 
 - https://github.com/ilya84/los-tv-x86 — этот набор (доки, патчи, установщик)
 - https://github.com/ilya84/lineage_bass_android — манифест (ветка `lineage-23.2`)
