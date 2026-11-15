@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <!--
+    Remove all Qualcomm projects (hardware/qcom, hardware/qcom-caf,
+    vendor/qcom) from the resolved manifest.
+    Generated 2026-11-15 from repo manifest of los-tv-23 (1219 projects).
+    The resolved manifest has 94 Qualcomm project paths but only 42 unique
+    repo names: LineageOS checks the same qcom repo out at multiple CAF
+    paths (msm8953/msm8998/sdm660/.../sm8750).  repo removes every path
+    whose project name matches, so one entry per unique name is enough.
+    Apply in a clean tree *before* repo sync:
+      cp manifest/05-remove-qcom.xml <tree>/.repo/local_manifests/
+      repo sync -j8
+  -->
+  <remove-project name="LineageOS/android_hardware_qcom_audio" />
+  <remove-project name="LineageOS/android_hardware_qcom_audio-ar" />
+  <remove-project name="LineageOS/android_hardware_qcom_bootctrl" />
+  <remove-project name="LineageOS/android_hardware_qcom_bt" />
+  <remove-project name="LineageOS/android_hardware_qcom-caf_common" />
+  <remove-project name="LineageOS/android_hardware_qcom_display" />
+  <remove-project name="LineageOS/android_hardware_qcom_media" />
+  <remove-project name="LineageOS/android_hardware_qcom_sdm845_display" />
+  <remove-project name="LineageOS/android_hardware_qcom_sdm845_gps" />
+  <remove-project name="LineageOS/android_hardware_qcom_sm7250_display" />
+  <remove-project name="LineageOS/android_hardware_qcom_sm7250_gps" />
+  <remove-project name="LineageOS/android_hardware_qcom_sm8150_display" />
+  <remove-project name="LineageOS/android_hardware_qcom_sm8150_gps" />
+  <remove-project name="LineageOS/android_hardware_qcom_thermal" />
+  <remove-project name="LineageOS/android_hardware_qcom_wlan" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_agm" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_arpal-lx" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_audio" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_audio-commonsys-intf" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_audio-hal_st-hal" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_audio-hal_st-hal-ar" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_audioreach-graphservices" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_core-utils-sys" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_core-utils-vendor" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_dataipa" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_data-ipa-cfg-mgr" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_dataservices" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-commonsys" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-commonsys-intf" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-core" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-intf" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_fm-commonsys" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_healthd-ext" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_interfaces" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_libfmjni" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_libvmmem" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_power" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_thermal-engine" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_usb" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_vibrator" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_wfd-commonsys" />
+</manifest>
