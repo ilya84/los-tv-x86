@@ -237,7 +237,7 @@ ensure_meson() {
     tar -xzf "$tmp/meson.tar.gz" -C "$dir" --strip-components=1
     cat > "$dir/meson" <<'SH'
 #!/bin/bash
-exec python3 "$(dirname "$0")/meson.py" "$@"
+exec python3 "$(dirname "$(readlink -f "$0")")/meson.py" "$@"
 SH
     chmod +x "$dir/meson"
     rm -rf "$tmp"
