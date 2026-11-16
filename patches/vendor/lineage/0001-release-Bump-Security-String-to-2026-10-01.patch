@@ -1,0 +1,61 @@
+From bb22f3f8093557d063dbf26f786f7c21b5fea73c Mon Sep 17 00:00:00 2001
+From: Nolen Johnson <johnsonnolen@gmail.com>
+Date: Sun, 20 Sep 2026 13:06:57 -0400
+Subject: [PATCH] release: Bump Security String to 2026-10-01
+
+Implemented:
+============
+CVE              References    Type    Severity    Updated AOSP versions
+CVE-2026-55265   A-517377150   DoS     Critical    14, 15, 16, 16-qpr2, 17
+CVE-2026-58865   A-513582756   DoS     Critical    14, 15, 16, 16-qpr2, 17
+CVE-2026-58880   A-522373105   EoP     Critical    16, 16-qpr2, 17
+
+Previously Implemented:
+=======================
+CVE              References    Type    Severity    Updated AOSP versions
+CVE-2026-28667   A-508389908   ID      High        14, 15, 16, 16-qpr2, 17
+CVE-2026-45513   A-508389591   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-45516   A-503542587   ID      High        15, 16, 16-qpr2, 17
+CVE-2026-49878   A-511544607   RCE     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-49880   A-508390497   EoP     High        16, 16-qpr2, 17
+CVE-2026-49885   A-508389525   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-49933   A-522372651   DoS     Critical    16, 16-qpr2, 17
+CVE-2026-49937   A-514861024   ID      High        14, 15, 16, 16-qpr2, 17
+CVE-2026-55266   A-509980995   DoS     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-55269   A-522372274   EoP     Critical    16, 16-qpr2, 17
+CVE-2026-55270   A-517377154   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-55280   A-522373576   EoP     Critical    16, 16-qpr2, 17
+CVE-2026-58815   A-514726373   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-58834   A-515158597   DoS     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-58835   A-522371916   EoP     Critical    16, 16-qpr2, 17
+CVE-2026-58841   A-515034370   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-58854   A-514727559   EoP     High        14, 15, 16, 16-qpr2, 17
+CVE-2026-58856   A-514734206   EoP     High        14, 15, 16, 16-qpr2, 17
+
+Not Implemented:
+================
+None
+
+Not Applicable (platform source):
+=================================
+CVE              References    Type    Severity    Updated AOSP versions
+CVE-2026-45524   A-514740359   ID      High        17
+CVE-2026-55279   A-514747079   DoS     High        17
+CVE-2026-55286   A-522376740   EoP     High        17
+CVE-2026-58859   A-517377722   DoS     High        17
+
+Change-Id: I3746dd580f1013e2cdc91075d39b531ea24ce88a
+---
+ .../flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto  | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto b/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
+index 4fd5c404..8d173bc0 100644
+--- a/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
++++ b/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
+@@ -1,4 +1,4 @@
+ name: "RELEASE_PLATFORM_SECURITY_PATCH"
+ value {
+-  string_value: "2026-06-01"
++  string_value: "2026-10-01"
+ }
