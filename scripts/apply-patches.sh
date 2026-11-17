@@ -77,8 +77,21 @@ while IFS= read -r proj; do
 
         # Fallback для патчей, поверх которых уже легли следующие патчи
         # проекта: обратный apply не проходит, сверяем точный subject
-        # (уже без [PATCH]).
-        subject=$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$path" | head -n 1)
+        # (уже без [PATCH]).  Длинный subject в mail-файле свёрнут на
+        # несколько строк с ведущим пробелом — разворачиваем.
+        subject=$(awk '
+            /^Subject:/ {
+                s = $0
+                sub(/^Subject: /, "", s)
+                sub(/^\[PATCH[^]]*\] /, "", s)
+                while ((getline line) > 0) {
+                    if (line ~ /^[ \t]/) { sub(/^[ \t]+/, " ", line); s = s line }
+                    else break
+                }
+                print s
+                exit
+            }
+        ' "$path" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         if [ -n "$subject" ] &&
            git -C "$ROOT/$proj" log --format=%s -n 5000 HEAD 2>/dev/null | grep -Fxq "$subject"; then
             echo "  skip $(basename "$path") (коммит с тем же subject уже в HEAD)"
