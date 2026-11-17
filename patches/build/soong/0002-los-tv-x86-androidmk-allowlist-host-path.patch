@@ -1,0 +1,71 @@
+From 60abd62bd2dfba2b7feb1fb0dc4312bc88c93352 Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Mon, 16 Nov 2026 23:59:18 +1000
+Subject: [PATCH] los-tv: x86 Android.mk allowlist and host path allowances
+
+---
+ ui/build/androidmk_denylist.go | 23 ++++++++++++++++++++++-
+ ui/build/paths/config.go       |  4 ++++
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/ui/build/androidmk_denylist.go b/ui/build/androidmk_denylist.go
+index ea4c65c9d..46741638c 100644
+--- a/ui/build/androidmk_denylist.go
++++ b/ui/build/androidmk_denylist.go
+@@ -61,7 +61,28 @@ var androidmk_denylist []string = []string{
+ 
+ var androidmk_allowlist []string = []string{
+ 	"bootable/deprecated-ota/updater/Android.mk",
+-	"external/mesa/android/Android.mk",
++	"external/mesa3d/android/Android.mk",
++	"bootable/aaropa/Android.mk",
++	"external/alsa-lib/android/Android.mk",
++	"external/alsa-utils/android/Android.mk",
++	"external/dmidecode/Android.mk",
++	"external/drm_gralloc/Android.mk",
++	"external/drmfb-composer/Android.mk",
++	"external/efibootmgr/src/Android.mk",
++	"external/efivar/src/Android.mk",
++	"external/evtest/Android.mk",
++	"external/ffmpeg/Android.mk",
++	"external/fmtlib11/support/Android.mk",
++	"external/gbm_gralloc/Android.mk",
++	"external/hcitools/Android.mk",
++	"external/kernel-drivers-zenith/Android.mk",
++	"external/kernel-drivers/Android.mk",
++	"external/minigbm/gbm_mesa_driver/Android.mk",
++	"external/s2tc/Android.mk",
++	"external/stagefright-plugins/Android.mk",
++	"external/thermal_daemon/Android.mk",
++	"external/tree/Android.mk",
++	"external/iptsd/Android.mk",
+ }
+ 
+ func getAllLines(ctx Context, filename string) []string {
+diff --git a/ui/build/paths/config.go b/ui/build/paths/config.go
+index 4af7d708c..6f6193021 100644
+--- a/ui/build/paths/config.go
++++ b/ui/build/paths/config.go
+@@ -94,15 +94,19 @@ var Configuration = map[string]PathConfig{
+ 	"gcert":       Allowed,
+ 	"gcertstatus": Allowed,
+ 	"gcloud":      Allowed,
++	"getopt":      Allowed,
+ 	"git":         Allowed,
+ 	"hexdump":     Allowed,
++	"install":     Allowed,
+ 	"jar":         Allowed,
+ 	"java":        Allowed,
+ 	"javap":       Allowed,
+ 	"lsof":        Allowed,
+ 	"openssl":     Allowed,
++	"pahole":      Allowed,
+ 	"perl":        Log,
+ 	"pstree":      Allowed,
++	"realpath":    Allowed,
+ 	"rsync":       Allowed,
+ 	"sh":          Allowed,
+ 	"stubby":      Allowed,
+-- 
+2.39.5
+

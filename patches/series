@@ -1,27 +1,51 @@
+# los-tv patch series.  One line per patch: <project>\t<patch file>.
+# Lines are grouped by project; apply-patches.sh applies all remaining
+# patches of a project with a single `git am -3`.
+#
+# A patch whose `From <hash>` commit already exists in the project history
+# (e.g. the device tree comes from the public los-tv branch) is skipped
+# individually; the other patches of the same project are still applied.
+# vendor/lineage is intentionally absent: upstream 1a4ed79a already has
+# security patch 2026-11-01.  The old local pin to 2026-10-01 is kept in
+# patches/vendor/lineage/ for history but must not be applied.
+
 bootable/aaropa	patches/bootable/aaropa/0001-los-tv-initrd-on-Bliss-Bass-8c6a69f-BCB-recovery-mod.patch
 bootable/recovery	patches/bootable/recovery/0001-los-tv-recovery-sideload-auto-reboot-on-success-for-.patch
-build/soong	patches/build/soong/0001-los-tv-fsgen-map-tv-recovery-density-to-xhdpi.patch
+bootable/recovery	patches/bootable/recovery/0002-los-tv-recovery-ui-link-liblog.patch
 build/release	patches/build/release/0001-los-tv-disable-volume_group_management_update-for-tr.patch
-system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch
+build/soong	patches/build/soong/0001-los-tv-fsgen-map-tv-recovery-density-to-xhdpi.patch
+build/soong	patches/build/soong/0002-los-tv-x86-androidmk-allowlist-host-path.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0001-los-tv-x86_64-TV-device-tree-SELinux-enforcing-radeo.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0002-los-tv-skip-vendor-kernel-mk.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0003-los-tv-graphics-sepolicy-enforcing.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0004-los-tv-ueventd-module-load-enforcing.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0005-los-tv-rebind-HDA-at-bootcomplete-to-fix-RTP-19-unde.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0006-los-tv-raise-system-image-to-6.0-GB-for-release-marg.patch
+device/google/atv	patches/device/google/atv/0001-los-tv-map-Home-key-to-HOME-on-ATV.patch
+device/lineage/sepolicy	patches/device/lineage/sepolicy/0001-los-tv-gmscore_app-drop-apk_verity_prop-access.patch
+external/XMP-Toolkit-SDK	patches/external/XMP-Toolkit-SDK/0001-los-tv-vendor_available-for-xmp-toolkit-libs.patch
+external/drmfb-composer	patches/external/drmfb-composer/0001-Use-cpp-version-20.patch
+external/drmfb-composer	patches/external/drmfb-composer/0002-los-tv-drmfb-no-uevent-hotplug-thread-unbind-fbcon-r.patch
+external/google-highway	patches/external/google-highway/0001-los-tv-vendor_available-for-libhwy.patch
+external/mesa3d	patches/external/mesa3d/0001-los-tv-mesa-vendor_available-for-virtio-rust-modules.patch
+external/skia	patches/external/skia/0001-los-tv-skia-libskia_skcms-vendor_available.patch
+external/stagefright-plugins	patches/external/stagefright-plugins/0001-los-tv-c2-ffmpeg-VA-API-seccomp-vendor-pixel-format-.patch
+frameworks/av	patches/frameworks/av/0001-los-tv-media-dav1d-threads-x86-seccomp-resource-mana.patch
+frameworks/av	patches/frameworks/av/0002-los-tv-c2-raw-codec-data.patch
 frameworks/base	patches/frameworks/base/0001-los-tv-TV-framework-notification-extender-Home-key-r.patch
+hardware/interfaces	patches/hardware/interfaces/0001-los-tv-BluetoothHci-return-after-UNABLE_TO_OPEN_INTE.patch
+hardware/interfaces	patches/hardware/interfaces/0002-los-tv-restore-composer-service-clone.patch
+hardware/interfaces	patches/hardware/interfaces/0002-los-tv-disable-hwcomposer-2-1-2-4-autostart.patch
+hardware/lineage/compat	patches/hardware/lineage/compat/0001-los-tv-disable-Android.bp.patch
+kernel/x86/zenith	patches/kernel/x86/zenith/0001-los-tv-zenith-kernel-memfd-ashmem-shim-KernelSU-off.patch
 packages/apps/TvSettings	patches/packages/apps/TvSettings/0001-los-tv-TV-settings-BLE-remotes-x86-display-resolutio.patch
 packages/apps/Updater	patches/packages/apps/Updater/0001-los-tv-auto-install-TV-settings-focus-configurable-c.patch
-device/lineage/sepolicy	patches/device/lineage/sepolicy/0001-los-tv-gmscore_app-drop-apk_verity_prop-access.patch
 packages/modules/Bluetooth	patches/packages/modules/Bluetooth/0001-los-tv-HID-support-remotes-with-many-reports-64.patch
+packages/modules/StatsD	patches/packages/modules/StatsD/0001-los-tv-libstatspull_static-for-platform-statsd_flags.patch
 packages/providers/ContactsProvider	patches/packages/providers/ContactsProvider/0001-los-tv-TV-skip-call-log-background-task-relax-SQL-to.patch
 system/apex	patches/system/apex/0001-los-tv-apexd-longer-wait-for-dev-loop-control.patch
-frameworks/av	patches/frameworks/av/0001-los-tv-media-dav1d-threads-x86-seccomp-resource-mana.patch
-external/stagefright-plugins	patches/external/stagefright-plugins/0001-los-tv-c2-ffmpeg-VA-API-seccomp-vendor-pixel-format-.patch
-external/skia	patches/external/skia/0001-los-tv-skia-libskia_skcms-vendor_available.patch
-external/mesa3d	patches/external/mesa3d/0001-los-tv-mesa-vendor_available-for-virtio-rust-modules.patch
-external/drmfb-composer	patches/external/drmfb-composer/0001-los-tv-drmfb-no-uevent-hotplug-thread-unbind-fbcon-r.patch
-external/XMP-Toolkit-SDK	patches/external/XMP-Toolkit-SDK/0001-los-tv-vendor_available-for-xmp-toolkit-libs.patch
-external/google-highway	patches/external/google-highway/0001-los-tv-vendor_available-for-libhwy.patch
-packages/modules/StatsD	patches/packages/modules/StatsD/0001-los-tv-libstatspull_static-for-platform-statsd_flags.patch
+system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch
+system/core	patches/system/core/0002-los-tv-port-aosp-x86-init-fixes.patch
+system/core	patches/system/core/0003-los-tv-ueventd-modalias-x86-firmware-dirs.patch
 system/extras	patches/system/extras/0001-los-tv-lpunpack_dev-device-build-for-proprietary-add.patch
-device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0001-los-tv-x86_64-TV-device-tree-SELinux-enforcing-radeo.patch
 system/sepolicy	patches/system/sepolicy/0001-los-tv-SELinux-media-audio-memfd-rules-c2-ffmpeg-Wid.patch
-device/google/atv	patches/device/google/atv/0001-los-tv-map-Home-key-to-HOME-on-ATV.patch
-hardware/interfaces	patches/hardware/interfaces/0001-los-tv-BluetoothHci-return-after-UNABLE_TO_OPEN_INTE.patch
-kernel/x86/zenith	patches/kernel/x86/zenith/0001-los-tv-zenith-kernel-memfd-ashmem-shim-KernelSU-off.patch
-hardware/lineage/compat	patches/hardware/lineage/compat/0001-los-tv-disable-Android.bp.patch

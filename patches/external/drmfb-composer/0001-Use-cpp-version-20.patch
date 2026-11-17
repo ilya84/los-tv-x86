@@ -1,0 +1,25 @@
+From 75864a068c12ca63aa69a7fe33ffe430a0c02853 Mon Sep 17 00:00:00 2001
+From: Erfan Abdi <erfangplus@gmail.com>
+Date: Thu, 25 Jun 2026 14:16:03 +0330
+Subject: [PATCH] Use cpp version 20
+
+---
+ Android.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Android.mk b/Android.mk
+index b19bfab..875baf1 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -8,7 +8,7 @@ LOCAL_MODULE := android.hardware.graphics.composer@2.1-drmfb-service
+ LOCAL_MODULE_RELATIVE_PATH := hw
+ LOCAL_VENDOR_MODULE := true
+ LOCAL_INIT_RC := android.hardware.graphics.composer@2.1-drmfb-service.rc
+-LOCAL_CPP_STD := c++17
++LOCAL_CPP_STD := c++20
+ 
+ LOCAL_SRC_FILES := \
+     service.cpp \
+-- 
+2.39.5
+

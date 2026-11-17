@@ -1,0 +1,38 @@
+From 1b540c673eaddd8aa38377d2f6b4a21140d1dd40 Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 09:21:24 +1000
+Subject: [PATCH] los-tv: C2: add raw codec data param for FFmpeg components
+
+---
+ media/codec2/core/include/C2Config.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/media/codec2/core/include/C2Config.h b/media/codec2/core/include/C2Config.h
+index f8ee41e336..3851d854af 100644
+--- a/media/codec2/core/include/C2Config.h
++++ b/media/codec2/core/include/C2Config.h
+@@ -302,6 +302,9 @@ enum C2ParamIndexKind : C2Param::type_index_t {
+     // allow tunnel peek behavior to be unspecified for app compatibility
+     kParamIndexTunnelPeekMode, // tunnel mode, enum
+ 
++    // FFMPEG
++    kParamIndexRawCodecData,
++
+     // input surface
+     kParamIndexCaptureFrameRate, // input-surface, float
+     kParamIndexStopTimeOffset, // input-surface, int64_t
+@@ -2936,6 +2939,11 @@ typedef C2StreamParam<C2Info, C2SimpleValueStruct<int32_t>, kParamIndexAverageBl
+         C2AndroidStreamAverageBlockQuantizationInfo;
+ constexpr char C2_PARAMKEY_AVERAGE_QP[] = "coded.average-qp";
+ 
++// FFMEG
++
++typedef C2StreamParam<C2Info, C2BlobValue, kParamIndexRawCodecData> C2StreamRawCodecDataInfo;
++constexpr char C2_PARAMKEY_RAW_CODEC_DATA[] = "coded.raw-codec-data";
++
+ /// @}
+ 
+ #endif  // C2CONFIG_H_
+-- 
+2.39.5
+

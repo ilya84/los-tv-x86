@@ -1,0 +1,36 @@
+From 948dccfdd1e496763cd1c3524bf1baa59d9fa5a8 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 22:41:38 +1000
+Subject: [PATCH] los-tv: disable hwcomposer 2.1-default/2.4 autostart
+
+drm_hwcomposer (atomic) cannot drive legacy-KMS radeon: the 2.4 service
+exits immediately, and its init.rc onrestart restarts surfaceflinger in
+an endless loop (screen frozen on the console).  The old los-tv-x86
+fork had both services disabled; init.sh starts the right composer
+explicitly (drmfb on radeon).
+---
+ .../default/android.hardware.graphics.composer@2.1-service.rc    | 1 +
+ .../default/android.hardware.graphics.composer@2.4-service.rc    | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/graphics/composer/2.1/default/android.hardware.graphics.composer@2.1-service.rc b/graphics/composer/2.1/default/android.hardware.graphics.composer@2.1-service.rc
+index c8fccdce20..6cef477ad7 100644
+--- a/graphics/composer/2.1/default/android.hardware.graphics.composer@2.1-service.rc
++++ b/graphics/composer/2.1/default/android.hardware.graphics.composer@2.1-service.rc
+@@ -6,3 +6,4 @@ service vendor.hwcomposer-2-1 /vendor/bin/hw/android.hardware.graphics.composer@
+     capabilities SYS_NICE
+     onrestart restart surfaceflinger
+     task_profiles ServiceCapacityLow
++    disabled
+diff --git a/graphics/composer/2.4/default/android.hardware.graphics.composer@2.4-service.rc b/graphics/composer/2.4/default/android.hardware.graphics.composer@2.4-service.rc
+index d82dcd92f0..7c0a358925 100644
+--- a/graphics/composer/2.4/default/android.hardware.graphics.composer@2.4-service.rc
++++ b/graphics/composer/2.4/default/android.hardware.graphics.composer@2.4-service.rc
+@@ -5,3 +5,4 @@ service vendor.hwcomposer-2-4 /vendor/bin/hw/android.hardware.graphics.composer@
+     capabilities SYS_NICE
+     onrestart restart surfaceflinger
+     task_profiles ServiceCapacityLow
++    disabled
+-- 
+2.39.5
+

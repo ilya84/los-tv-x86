@@ -1,0 +1,24 @@
+From 58099cd15fdf873ef638b8f37a05e0ea6f117ad8 Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 07:17:34 +1000
+Subject: [PATCH] los-tv: recovery_ui: link liblog for xf86drm logging
+
+---
+ recovery_ui/Android.bp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/recovery_ui/Android.bp b/recovery_ui/Android.bp
+index 65475f9e..48fedb09 100644
+--- a/recovery_ui/Android.bp
++++ b/recovery_ui/Android.bp
+@@ -54,6 +54,7 @@ cc_library {
+         "libbase",
+         "libcutils",
+         "libhidlbase",
++        "liblog",
+         "libpng",
+         "libutils",
+         "libz",
+-- 
+2.39.5
+

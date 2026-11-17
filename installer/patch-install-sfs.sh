@@ -38,7 +38,7 @@ SFS="${SFS:-$TREE/bootable/aaropa/iso/install.sfs}"
 OVERLAY="${OVERLAY:-$HERE/../installer/overlay}"
 # База Ananda-Aropa 20260905 + repair-скрипт aaropa (fetch). Старые базы
 # можно обработать через BASE_MD5=... / ALLOW_OTHER_BASE=1.
-BASE_MD5="${BASE_MD5:-5786133db5f5bbc5b45c090482057e57}"
+BASE_MD5="${BASE_MD5:-4ef2af1cb15edcf08efd3f1392f47581}"
 FORCE="${FORCE:-0}"
 ALLOW_OTHER_BASE="${ALLOW_OTHER_BASE:-0}"
 MARKER="${MARKER:-$TREE/bootable/aaropa/install.sfs.patched}"

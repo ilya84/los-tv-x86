@@ -1,4 +1,4 @@
-From 172a6d234cb3214c3d09fa8785c0d8d459b058f1 Mon Sep 17 00:00:00 2001
+From cea87f74411229abe3154cf4d7d19e7c38843d93 Mon Sep 17 00:00:00 2001
 From: ilya84 <kacnep.0000@gmail.com>
 Date: Tue, 3 Nov 2026 13:38:39 +1000
 Subject: [PATCH] los-tv: media: dav1d threads, x86 seccomp, resource-manager
@@ -6,12 +6,12 @@ Subject: [PATCH] los-tv: media: dav1d threads, x86 seccomp, resource-manager
 
 ---
  .../components/dav1d/C2SoftDav1dDec.cpp       |  2 +-
- .../seccomp_policy/mediaswcodec-x86.policy    |  1 +
- .../seccomp_policy/mediaswcodec-x86_64.policy |  1 +
+ .../seccomp_policy/mediaswcodec-x86.policy    |  6 ++++
+ .../seccomp_policy/mediaswcodec-x86_64.policy |  6 ++++
  services/mediametrics/Android.bp              | 16 +++++++++
  services/mediaresourcemanager/Android.bp      |  8 +----
  .../ResourceManagerMetricsStub.cpp            | 33 +++++++++++++++++++
- 6 files changed, 53 insertions(+), 8 deletions(-)
+ 6 files changed, 63 insertions(+), 8 deletions(-)
  create mode 100644 services/mediaresourcemanager/ResourceManagerMetricsStub.cpp
 
 diff --git a/media/codec2/components/dav1d/C2SoftDav1dDec.cpp b/media/codec2/components/dav1d/C2SoftDav1dDec.cpp
@@ -28,29 +28,39 @@ index 2a0fa91326..696b9f1174 100644
      int32_t numThreads =
              android::base::GetIntProperty(NUM_THREADS_DAV1D_PROPERTY, NUM_THREADS_DAV1D_DEFAULT);
 diff --git a/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy b/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
-index 01d77781c3..dbb6f5fdba 100644
+index 1c651a1af1..dbb6f5fdba 100644
 --- a/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
 +++ b/services/mediacodec/seccomp_policy/mediaswcodec-x86.policy
-@@ -71,6 +71,7 @@ sched_yield: 1
- # Required by mesa3d
- kcmp: 1
- sched_getaffinity: 1
-+sched_setaffinity: 1
- sysinfo: 1
+@@ -68,6 +68,12 @@ getpid: 1
+ gettid: 1
+ sched_yield: 1
  
++# Required by mesa3d
++kcmp: 1
++sched_getaffinity: 1
++sched_setaffinity: 1
++sysinfo: 1
++
  # The mmap2/mprotect/prctl rules in this file are less restrictive than the rules
+ # in the crash_dump policy file. Therefore, include a version of the crash_dump
+ # policy that does not include any mmap2/mprotect/prctl rules.
 diff --git a/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy b/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
-index 7e678286b5..2fb481918d 100644
+index cfaed29d04..2fb481918d 100644
 --- a/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
 +++ b/services/mediacodec/seccomp_policy/mediaswcodec-x86_64.policy
-@@ -71,6 +71,7 @@ sched_yield: 1
- # Required by mesa3d
- kcmp: 1
- sched_getaffinity: 1
-+sched_setaffinity: 1
- sysinfo: 1
+@@ -68,6 +68,12 @@ getpid: 1
+ gettid: 1
+ sched_yield: 1
  
++# Required by mesa3d
++kcmp: 1
++sched_getaffinity: 1
++sched_setaffinity: 1
++sysinfo: 1
++
  # The mmap/mprotect/prctl rules in this file are less restrictive than the rules
+ # in the crash_dump policy file. Therefore, include a version of the crash_dump
+ # policy that does not include any mmap/mprotect/prctl rules.
 diff --git a/services/mediametrics/Android.bp b/services/mediametrics/Android.bp
 index d29aa805c8..389ce4743b 100644
 --- a/services/mediametrics/Android.bp
@@ -146,3 +156,6 @@ index 0000000000..bea7bd9e8e
 +std::string ResourceManagerMetrics::dump() const { return {}; }
 +
 +}  // namespace android
+-- 
+2.39.5
+

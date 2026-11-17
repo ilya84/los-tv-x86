@@ -1,0 +1,28 @@
+From f33878653a7980646625b2fe2f86cd0ad19c0c25 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Wed, 18 Nov 2026 00:22:16 +1000
+Subject: [PATCH 6/6] los-tv: raise system image to 6.0 GB for release margin
+
+---
+ BoardConfig.mk | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index e90fa52..f356966 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -232,7 +232,10 @@ SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += $(LOCAL_COMMON_TREE)/sepolicy/public
+ BOARD_VENDOR_SEPOLICY_DIRS += $(LOCAL_COMMON_TREE)/sepolicy/vendor
+ 
+ TARGET_FLATTEN_APEX := true
+-BOARD_SYSTEMIMAGE_PARTITION_SIZE := $(shell echo | awk '{printf "%.0f", 5.8 * 1000 * 1000 * 1000}')
++# 2026-11-18 (step 2.2): 5.8 GB left only 2 560 bytes of free space in
++# system.img.  Keep a real margin for the next fixes (installer/make-ab and
++# update_engine use the actual image size, not this constant).
++BOARD_SYSTEMIMAGE_PARTITION_SIZE := $(shell echo | awk '{printf "%.0f", 6.0 * 1000 * 1000 * 1000}')
+ BOARD_RECOVERYIMAGE_PARTITION_SIZE := $(shell echo | awk '{printf "%.0f", 98 * 1000 * 1000}')
+ TARGET_USERIMAGES_SPARSE_EXT_DISABLED := true
+ BOARD_USES_OEMIMAGE := true
+-- 
+2.39.5
+

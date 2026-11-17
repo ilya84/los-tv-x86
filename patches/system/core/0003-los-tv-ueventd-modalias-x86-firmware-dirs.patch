@@ -1,0 +1,33 @@
+From 7a97077fa1538902de085416d37b8a6c1f00d298 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 21:18:37 +1000
+Subject: [PATCH] los-tv: ueventd: enable modalias module loading, x86 firmware
+ dirs
+
+Without modalias_handling ueventd never auto-loads kernel modules:
+no radeon.ko (SurfaceFlinger falls back to the fbdev default_clone
+composer and boot-loops) and no NIC modules (no network/adb).
+Firmware for radeon/NICs lives in /vendor/firmware and
+/system/lib/firmware on los-tv, not in the AOSP default dirs.
+Restores the behaviour of the old los-tv-x86 system/core fork.
+---
+ rootdir/ueventd.rc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/rootdir/ueventd.rc b/rootdir/ueventd.rc
+index 2ff86a5e9..46719d0ab 100644
+--- a/rootdir/ueventd.rc
++++ b/rootdir/ueventd.rc
+@@ -1,7 +1,8 @@
+ import /vendor/etc/ueventd.rc
+ import /odm/etc/ueventd.rc
+ 
+-firmware_directories /etc/firmware/ /odm/firmware/ /vendor/firmware/ /firmware/image/
++firmware_directories /vendor/firmware /system/lib/firmware
++modalias_handling enabled
+ uevent_socket_rcvbuf_size 16M
+ 
+ subsystem graphics
+-- 
+2.39.5
+

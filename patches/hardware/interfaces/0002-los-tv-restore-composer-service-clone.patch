@@ -1,0 +1,140 @@
+From df9ff31f200a85cd16d3570c6d435ccac4293848 Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 00:19:11 +1000
+Subject: [PATCH] los-tv: restore composer 2.1 service-clone for x86 fallback
+
+---
+ .../composer/2.1/default_clone/Android.bp     | 36 +++++++++++
+ ....hardware.graphics.composer@2.1-service.rc |  9 +++
+ .../composer/2.1/default_clone/service.cpp    | 60 +++++++++++++++++++
+ 3 files changed, 105 insertions(+)
+ create mode 100644 graphics/composer/2.1/default_clone/Android.bp
+ create mode 100644 graphics/composer/2.1/default_clone/android.hardware.graphics.composer@2.1-service.rc
+ create mode 100644 graphics/composer/2.1/default_clone/service.cpp
+
+diff --git a/graphics/composer/2.1/default_clone/Android.bp b/graphics/composer/2.1/default_clone/Android.bp
+new file mode 100644
+index 0000000000..cf4af83ce8
+--- /dev/null
++++ b/graphics/composer/2.1/default_clone/Android.bp
+@@ -0,0 +1,36 @@
++package {
++    default_team: "trendy_team_android_core_graphics_stack",
++    // See: http://go/android-license-faq
++    // A large-scale-change added 'default_applicable_licenses' to import
++    // all of the 'license_kinds' from "hardware_interfaces_license"
++    // to get the below license kinds:
++    //   SPDX-license-identifier-Apache-2.0
++    default_applicable_licenses: ["hardware_interfaces_license"],
++}
++
++cc_binary {
++    name: "android.hardware.graphics.composer@2.1-service-clone",
++    defaults: ["hidl_defaults"],
++    vendor: true,
++    relative_install_path: "hw",
++    srcs: ["service.cpp"],
++    init_rc: ["android.hardware.graphics.composer@2.1-service.rc"],
++    header_libs: [
++        "android.hardware.graphics.composer@2.1-passthrough",
++    ],
++    shared_libs: [
++        "android.hardware.graphics.composer@2.1",
++        "android.hardware.graphics.composer@2.1-resources",
++        "libbase",
++        "libbinder",
++        "libcutils",
++        "libfmq",
++        "libhardware",
++        "libhidlbase",
++        "libhwc2on1adapter",
++        "libhwc2onfbadapter",
++        "liblog",
++        "libsync",
++        "libutils",
++    ],
++}
+diff --git a/graphics/composer/2.1/default_clone/android.hardware.graphics.composer@2.1-service.rc b/graphics/composer/2.1/default_clone/android.hardware.graphics.composer@2.1-service.rc
+new file mode 100644
+index 0000000000..f06d530e6a
+--- /dev/null
++++ b/graphics/composer/2.1/default_clone/android.hardware.graphics.composer@2.1-service.rc
+@@ -0,0 +1,9 @@
++service vendor.hwcomposer-2-1-clone /vendor/bin/hw/android.hardware.graphics.composer@2.1-service-clone
++    interface android.hardware.graphics.composer@2.1::IComposer default_clone
++    class hal animation
++    user system
++    group graphics drmrpc
++    capabilities SYS_NICE
++    onrestart restart surfaceflinger
++    task_profiles ServiceCapacityLow
++    disabled
+diff --git a/graphics/composer/2.1/default_clone/service.cpp b/graphics/composer/2.1/default_clone/service.cpp
+new file mode 100644
+index 0000000000..66ef485eb1
+--- /dev/null
++++ b/graphics/composer/2.1/default_clone/service.cpp
+@@ -0,0 +1,60 @@
++/*
++ * Copyright 2016 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#define LOG_TAG "android.hardware.graphics.composer@2.1-service"
++
++#include <sched.h>
++
++#include <android/hardware/graphics/composer/2.1/IComposer.h>
++
++#include <binder/ProcessState.h>
++#include <composer-passthrough/2.1/HwcLoader.h>
++#include <hidl/LegacySupport.h>
++
++using android::hardware::graphics::composer::V2_1::IComposer;
++using android::hardware::graphics::composer::V2_1::passthrough::HwcLoader;
++
++int main() {
++    // the conventional HAL might start binder services
++    android::ProcessState::initWithDriver("/dev/vndbinder");
++    android::ProcessState::self()->setThreadPoolMaxThreadCount(4);
++    android::ProcessState::self()->startThreadPool();
++
++    // same as SF main thread
++    struct sched_param param = {0};
++    param.sched_priority = 2;
++    if (sched_setscheduler(0, SCHED_FIFO | SCHED_RESET_ON_FORK,
++                &param) != 0) {
++        ALOGE("Couldn't set SCHED_FIFO: %d", errno);
++    }
++
++    android::hardware::configureRpcThreadpool(4, true /* will join */);
++
++    android::sp<IComposer> composer = HwcLoader::load();
++    if (composer == nullptr) {
++        return 1;
++    }
++    constexpr char const* serviceName = "default_clone";
++    if (composer->registerAsService(serviceName) != android::NO_ERROR) {
++        ALOGE("failed to register service");
++        return 1;
++    }   
++
++    android::hardware::joinRpcThreadpool();
++
++    ALOGE("service is terminating");
++    return 1;
++}
+-- 
+2.39.5
+

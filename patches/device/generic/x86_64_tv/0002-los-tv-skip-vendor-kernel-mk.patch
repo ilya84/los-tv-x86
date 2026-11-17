@@ -1,0 +1,26 @@
+From c65458839d5522d825a12ab12e5ec85995f505fd Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 00:25:46 +1000
+Subject: [PATCH] los-tv: skip vendor/lineage kernel.mk, device builds its own
+ kernel
+
+---
+ BoardConfig.mk | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index bbf20e5..e90fa52 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -97,6 +97,8 @@ endif
+ # the following variables could be overridden
+ TARGET_PRELINK_MODULE := false
+ TARGET_NO_KERNEL ?= false
++# This device has its own kernel build in build/tasks/kernel.mk.
++TARGET_NO_KERNEL_OVERRIDE := true
+ TARGET_EXTRA_KERNEL_MODULES := 
+ ifneq ($(filter efi_img,$(MAKECMDGOALS)),)
+ TARGET_KERNEL_ARCH ?= x86_64
+-- 
+2.39.5
+

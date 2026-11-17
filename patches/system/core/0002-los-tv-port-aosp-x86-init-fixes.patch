@@ -1,0 +1,451 @@
+From 4aaf8874da377304593a69e73dccf2d8aad7cf45 Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 12:45:44 +1000
+Subject: [PATCH] los-tv: port Android-x86 init fixes (first-stage fstab,
+ usbmisc, modules, props)
+
+---
+ init/builtins.cpp                            | 43 ++++++++++++++++++++
+ init/devices.cpp                             |  6 ++-
+ init/first_stage_mount.cpp                   |  2 +-
+ init/modalias_handler.cpp                    | 13 +++++-
+ init/modalias_handler.h                      |  4 ++
+ init/property_service.cpp                    | 23 +++++++++--
+ init/subcontext.cpp                          |  2 +-
+ init/uevent_handler.h                        |  2 +
+ init/ueventd.cpp                             |  2 +-
+ init/util.cpp                                | 13 +++++-
+ libmodprobe/include/modprobe/modprobe.h      |  5 ++-
+ libmodprobe/include/modprobe/module_config.h |  1 +
+ libmodprobe/libmodprobe.cpp                  | 16 ++++++++
+ libmodprobe/module_config.cpp                | 40 +++++++++++++++++-
+ 14 files changed, 159 insertions(+), 13 deletions(-)
+
+diff --git a/init/builtins.cpp b/init/builtins.cpp
+index 4cf2b3862..d03b35933 100644
+--- a/init/builtins.cpp
++++ b/init/builtins.cpp
+@@ -814,8 +814,51 @@ static Result<void> do_rmdir(const BuiltinArguments& args) {
+     return {};
+ }
+ 
++// Read persist property from /data/property directly, because it may not have loaded.
++// If the file not found, try to call GetProperty to get the vaule from /default.prop.
++static std::string persist_property_get(const std::string& name)
++{
++    auto result = ReadFile("/data/property/" + name);
++    return !result.ok() ? base::GetProperty(name, "") : *result;
++}
++
+ static Result<void> do_sysclktz(const BuiltinArguments& args) {
+     struct timezone tz = {};
++
++    if (persist_property_get("persist.rtc_local_time") == "1") {
++        struct timeval tv = {};
++
++        if (gettimeofday(&tv, NULL)) {
++            return ErrnoError() << "gettimeofday() failed";
++        }
++
++        // Set system time and saved system zone in case of network
++        // not available and auto syncing time not available.
++        std::string time_zone = persist_property_get("persist.sys.timezone");
++        if (time_zone.empty()) {
++            LOG(INFO) << "sysclktz: persist.sys.timezone not found";
++            tz.tz_minuteswest = 0;
++        } else {
++            LOG(INFO) << "sysclktz: persist.sys.timezone: " << time_zone;
++            // localtime_r need the property, we need to set it
++            SetProperty("persist.sys.timezone", time_zone.c_str());
++            time_t t = tv.tv_sec;
++            struct tm tm;
++            if (localtime_r(&t, &tm)) {
++                tz.tz_minuteswest = -(tm.tm_gmtoff / 60);
++                LOG(INFO) << "sysclktz: tz.tz_minuteswest: " << tz.tz_minuteswest;
++            }
++        }
++
++        // At this moment, system time should be local time too,
++        // set it back to utc which linux required.
++        tv.tv_sec += tz.tz_minuteswest * 60;
++        if (!settimeofday(&tv, &tz)) {
++            return {};
++        }
++        return ErrnoError() << "settimeofday() with tv failed";
++    }
++
+     if (!android::base::ParseInt(args[1], &tz.tz_minuteswest)) {
+         return Error() << "Unable to parse mins_west_of_gmt";
+     }
+diff --git a/init/devices.cpp b/init/devices.cpp
+index 8cd1ddca3..670c8af45 100644
+--- a/init/devices.cpp
++++ b/init/devices.cpp
+@@ -772,7 +772,7 @@ void DeviceHandler::HandleUevent(const Uevent& uevent) {
+                    std::find(subsystems_.cbegin(), subsystems_.cend(), uevent.subsystem);
+                subsystem != subsystems_.cend()) {
+         devpath = subsystem->ParseDevPath(uevent);
+-    } else if (uevent.subsystem == "usb") {
++    } else if (uevent.subsystem == "usb" || uevent.subsystem == "usbmisc") {
+         if (!uevent.device_name.empty()) {
+             devpath = "/dev/" + uevent.device_name;
+         } else {
+@@ -783,6 +783,10 @@ void DeviceHandler::HandleUevent(const Uevent& uevent) {
+             int device_id = uevent.minor % 128 + 1;
+             devpath = StringPrintf("/dev/bus/usb/%03d/%03d", bus_id, device_id);
+         }
++    } else if (uevent.subsystem == "usbmisc") {
++        if (!uevent.device_name.empty()) {
++            devpath = "/dev/" + uevent.device_name;
++        }
+     } else if (StartsWith(uevent.subsystem, "usb")) {
+         // ignore other USB events
+         return;
+diff --git a/init/first_stage_mount.cpp b/init/first_stage_mount.cpp
+index 0148a5a29..e24920c88 100644
+--- a/init/first_stage_mount.cpp
++++ b/init/first_stage_mount.cpp
+@@ -150,7 +150,7 @@ static Result<Fstab> ReadFirstStageFstabAndroid() {
+                                        }),
+                         fstab.end());
+         } else {
+-            return Error() << "failed to read default fstab for first stage mount";
++            LOG(INFO) << "failed to read default fstab for first stage mount";
+         }
+     }
+     return fstab;
+diff --git a/init/modalias_handler.cpp b/init/modalias_handler.cpp
+index 6fea8198d..1c7b4adb0 100644
+--- a/init/modalias_handler.cpp
++++ b/init/modalias_handler.cpp
+@@ -27,7 +27,9 @@ namespace android {
+ namespace init {
+ 
+ ModaliasHandler::ModaliasHandler(const std::vector<std::string>& base_paths)
+-    : ModaliasHandler(ModuleConfig::Parse(base_paths)) {}
++    : ModaliasHandler(ModuleConfig::Parse(base_paths)) {
++    modprobe_.EnableDeferred(true);
++}
+ 
+ ModaliasHandler::ModaliasHandler(ModuleConfig config)
+     : module_options_(config.module_options),
+@@ -39,6 +41,15 @@ void ModaliasHandler::HandleUevent(const Uevent& uevent) {
+     modprobe_.LoadWithAliases(uevent.modalias, true);
+ }
+ 
++bool ModaliasHandler::IsUeventDeferred(const Uevent& uevent) {
++    if (!uevent.modalias.empty() && modprobe_.IsAliasDeferred(uevent.modalias)) return true;
++    return false;
++}
++
++void ModaliasHandler::ColdbootDone() {
++    modprobe_.EnableDeferred(false);
++}
++
+ void ModaliasHandler::EnqueueUevent(const Uevent& uevent, ThreadPool& thread_pool) {
+     if (uevent.modalias.empty()) return;
+     dependency_graph_.AddModule(uevent.modalias);
+diff --git a/init/modalias_handler.h b/init/modalias_handler.h
+index f394b168b..8a3321186 100644
+--- a/init/modalias_handler.h
++++ b/init/modalias_handler.h
+@@ -37,6 +37,10 @@ class ModaliasHandler : public UeventHandler {
+ 
+     void HandleUevent(const Uevent& uevent) override;
+ 
++    bool IsUeventDeferred(const Uevent& uevent) override;
++
++    void ColdbootDone() override;
++
+     // Add a uevent to the dependency graph and Enqueue dependency-free modules to the thread pool.
+     void EnqueueUevent(const Uevent& uevent, ThreadPool& thread_pool) override;
+ 
+diff --git a/init/property_service.cpp b/init/property_service.cpp
+index 3c78e761a..38c653366 100644
+--- a/init/property_service.cpp
++++ b/init/property_service.cpp
+@@ -89,6 +89,7 @@ using android::base::GetProperty;
+ using android::base::ParseInt;
+ using android::base::ReadFileToString;
+ using android::base::Result;
++using android::base::SetProperty;
+ using android::base::Split;
+ using android::base::StartsWith;
+ using android::base::StringPrintf;
+@@ -875,9 +876,9 @@ static void property_initialize_ro_product_props() {
+             "brand", "device", "manufacturer", "model", "name",
+     };
+     const char* RO_PRODUCT_PROPS_ALLOWED_SOURCES[] = {
+-            "odm", "product", "system_ext", "system", "vendor",
++            "bliss", "odm", "product", "system_ext", "system", "vendor",
+     };
+-    const char* RO_PRODUCT_PROPS_DEFAULT_SOURCE_ORDER = "product,odm,vendor,system_ext,system";
++    const char* RO_PRODUCT_PROPS_DEFAULT_SOURCE_ORDER = "bliss,product,odm,vendor,system_ext,system";
+     const std::string EMPTY = "";
+ 
+     std::string ro_product_props_source_order =
+@@ -1319,10 +1320,26 @@ static void ExportKernelBootProps() {
+         { "ro.boot.mode",       "ro.bootmode",   "unknown", },
+         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
+         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
+-        { "ro.boot.hardware",   "ro.hardware",   "unknown", },
++        { "ro.boot.hardware",   "ro.hardware",   UNSET, },
+         { "ro.boot.revision",   "ro.revision",   "0", },
+             // clang-format on
+     };
++    const char *hardware = prop_map[4].src_prop;
++    if (GetProperty(hardware, UNSET).empty()) {
++        char line[PROP_NAME_MAX + PROP_VALUE_MAX + 2], value[PROP_VALUE_MAX];
++#ifndef RECOVERY
++        auto f = fopen("/system/build.prop", "r");
++#else
++        auto f = fopen("/prop.default", "r");
++#endif  // RECOVERY
++        while (fgets(line, sizeof(line), f) == line) {
++            if (sscanf(line, "ro.product.system.name=%s", value) > 0) {
++                InitPropertySet(hardware, value);
++                break;
++            }
++        }
++        fclose(f);
++    }
+     for (const auto& prop : prop_map) {
+         std::string value = GetProperty(prop.src_prop, prop.default_value);
+         if (value != UNSET) InitPropertySet(prop.dst_prop, value);
+diff --git a/init/subcontext.cpp b/init/subcontext.cpp
+index e2ec35b53..e04279fe5 100644
+--- a/init/subcontext.cpp
++++ b/init/subcontext.cpp
+@@ -356,7 +356,7 @@ void InitializeSubcontext() {
+     }
+ 
+     if (SelinuxGetVendorAndroidVersion() >= __ANDROID_API_P__) {
+-        subcontext.reset(new Subcontext(std::vector<std::string>{"/vendor", "/odm"},
++        subcontext.reset(new Subcontext(std::vector<std::string>{"/vendor", "/system/vendor", "/odm"},
+                                         std::vector<std::string>{"VENDOR", "ODM"}, kVendorContext));
+     }
+ }
+diff --git a/init/uevent_handler.h b/init/uevent_handler.h
+index e3412ea20..0e44f5f8d 100644
+--- a/init/uevent_handler.h
++++ b/init/uevent_handler.h
+@@ -40,6 +40,8 @@ class UeventHandler {
+ 
+     virtual void HandleUevent(const Uevent& uevent) = 0;
+ 
++    virtual bool IsUeventDeferred(const Uevent& uevent) { return false; }
++
+     virtual void ColdbootDone() {}
+ 
+     // Enqueue a uevent to the thread pool.
+diff --git a/init/ueventd.cpp b/init/ueventd.cpp
+index 079a62ba8..2ae567a63 100644
+--- a/init/ueventd.cpp
++++ b/init/ueventd.cpp
+@@ -234,7 +234,7 @@ int ueventd_main(int argc, char** argv) {
+     });
+ 
+     if (ueventd_configuration.enable_modalias_handling) {
+-        std::vector<std::string> base_paths = {"/odm/lib/modules", "/vendor/lib/modules"};
++        std::vector<std::string> base_paths = {"/system/lib/modules", "/odm/lib/modules", "/vendor/lib/modules"};
+         uevent_handlers.emplace_back(std::make_shared<ModaliasHandler>(base_paths));
+     }
+     uevent_handlers.emplace_back(std::move(device_handler));
+diff --git a/init/util.cpp b/init/util.cpp
+index c9d20dbc3..d3566aa63 100644
+--- a/init/util.cpp
++++ b/init/util.cpp
+@@ -548,7 +548,11 @@ Result<MountAllOptions> ParseMountAll(const std::vector<std::string>& args) {
+ 
+     std::string fstab_path;
+     if (first_option_arg > 1) {
+-        fstab_path = args[1];
++        auto fstab_path_expanded = ExpandProps(args[1]);
++        if (!fstab_path_expanded.ok()) {
++            return Error() << "mount_all: cannot expand '" << args[1] << "': " << fstab_path_expanded.error();
++        }
++        fstab_path = *fstab_path_expanded;
+     } else if (compat_mode) {
+         return Error() << "mount_all argument 1 must be the fstab path";
+     }
+@@ -620,7 +624,12 @@ Result<std::string> ParseUmountAll(const std::vector<std::string>& args) {
+         }
+         return {};
+     }
+-    return args[1];
++
++    auto fstab_path_expanded = ExpandProps(args[1]);
++    if (!fstab_path_expanded.ok()) {
++        return Error() << "umount_all: cannot expand '" << args[1] << "': " << fstab_path_expanded.error();
++    }
++    return *fstab_path_expanded;
+ }
+ 
+ static void InitAborter(const char* abort_message) {
+diff --git a/libmodprobe/include/modprobe/modprobe.h b/libmodprobe/include/modprobe/modprobe.h
+index b42fcc50a..84c68731e 100644
+--- a/libmodprobe/include/modprobe/modprobe.h
++++ b/libmodprobe/include/modprobe/modprobe.h
+@@ -44,6 +44,8 @@ class Modprobe {
+                             std::vector<std::string>* dependencies,
+                             std::vector<std::string>* post_dependencies);
+     int GetModuleCount() { return module_count_; }
++    bool IsAliasDeferred(const std::string& alias_name);
++    void EnableDeferred(bool enable);
+     bool IsBlocklisted(const std::string& module_name);
+ 
+   private:
+@@ -62,10 +64,11 @@ class Modprobe {
+     std::vector<std::string> module_load_;
+     std::unordered_map<std::string, std::string> module_options_;
+     std::set<std::string> module_blocklist_;
+-
++    std::vector<std::string> module_deferred_aliases_;
+     std::mutex module_loaded_lock_;
+     std::unordered_set<std::string> module_loaded_ GUARDED_BY(module_loaded_lock_);
+     std::unordered_set<std::string> module_loaded_paths_ GUARDED_BY(module_loaded_lock_);
+     std::atomic_int module_count_ = 0;
+     const bool blocklist_enabled = false;
++    bool deferred_enabled = false;
+ };
+diff --git a/libmodprobe/include/modprobe/module_config.h b/libmodprobe/include/modprobe/module_config.h
+index c6852a856..9e724217f 100644
+--- a/libmodprobe/include/modprobe/module_config.h
++++ b/libmodprobe/include/modprobe/module_config.h
+@@ -43,6 +43,7 @@ class ModuleConfig {
+     std::vector<std::string> module_load;
+     std::unordered_map<std::string, std::string> module_options;
+     std::set<std::string> module_blocklist;
++    std::vector<std::string> module_deferred;
+ 
+   private:
+     ModuleConfig() = default;
+diff --git a/libmodprobe/libmodprobe.cpp b/libmodprobe/libmodprobe.cpp
+index 544b66012..5cd088c29 100644
+--- a/libmodprobe/libmodprobe.cpp
++++ b/libmodprobe/libmodprobe.cpp
+@@ -50,8 +50,13 @@ Modprobe::Modprobe(ModuleConfig config, bool use_blocklist)
+       module_load_(std::move(config.module_load)),
+       module_options_(std::move(config.module_options)),
+       module_blocklist_(std::move(config.module_blocklist)),
++      module_deferred_aliases_(std::move(config.module_deferred)),
+       blocklist_enabled(use_blocklist) {}
+ 
++void Modprobe::EnableDeferred(bool enable) {
++    deferred_enabled = enable;
++}
++
+ std::vector<std::string> Modprobe::GetDependencies(const std::string& module) {
+     auto it = module_deps_.find(module);
+     if (it == module_deps_.end()) {
+@@ -324,3 +329,14 @@ bool Modprobe::GetAllDependencies(const std::string& module,
+     }
+     return true;
+ }
++
++bool Modprobe::IsAliasDeferred(const std::string& alias_name)
++{
++    if (deferred_enabled) {
++        for (auto& deferred_alias: module_deferred_aliases_) {
++            if (fnmatch(deferred_alias.c_str(), alias_name.c_str(), 0) != 0) continue;
++            return true;
++        }
++    }
++    return false;
++}
+diff --git a/libmodprobe/module_config.cpp b/libmodprobe/module_config.cpp
+index f5d45f130..0751a375c 100644
+--- a/libmodprobe/module_config.cpp
++++ b/libmodprobe/module_config.cpp
+@@ -18,6 +18,7 @@
+ #include <modprobe/utils.h>
+ 
+ #include "pwd.h"
++#include <sys/utsname.h>
+ 
+ #include <utility>
+ 
+@@ -33,27 +34,54 @@ ModuleConfig ModuleConfig::Parse(const std::vector<std::string>& base_paths,
+                                  const std::string& load_file) {
+     ModuleConfig config;
+     using namespace std::placeholders;
++    std::string release;
++    struct utsname uts;
++    uname(&uts);
++    release = uts.release;
+ 
+     for (const auto& base_path : base_paths) {
++        const std::string release_base_path = base_path + "/" + release;
++
+         auto alias_callback = std::bind(&ModuleConfig::ParseAliasCallback, &config, _1);
++        config.ParseCfg(release_base_path + "/modules.alias", alias_callback);
+         config.ParseCfg(base_path + "/modules.alias", alias_callback);
+ 
++        auto dep_callback_release =
++                std::bind(&ModuleConfig::ParseDepCallback, &config, release_base_path, _1);
++        config.ParseCfg(release_base_path + "/modules.dep", dep_callback_release);
++
+         auto dep_callback = std::bind(&ModuleConfig::ParseDepCallback, &config, base_path, _1);
+         config.ParseCfg(base_path + "/modules.dep", dep_callback);
+ 
+         auto softdep_callback = std::bind(&ModuleConfig::ParseSoftdepCallback, &config, _1);
++        config.ParseCfg(release_base_path + "/modules.softdep", softdep_callback);
+         config.ParseCfg(base_path + "/modules.softdep", softdep_callback);
+ 
+         auto load_callback = std::bind(&ModuleConfig::ParseLoadCallback, &config, _1);
++        config.ParseCfg(release_base_path + "/" + load_file, load_callback);
+         config.ParseCfg(base_path + "/" + load_file, load_callback);
+ 
+         auto options_callback = std::bind(&ModuleConfig::ParseOptionsCallback, &config, _1);
++        config.ParseCfg(release_base_path + "/modules.options", options_callback);
+         config.ParseCfg(base_path + "/modules.options", options_callback);
+ 
+         auto blocklist_callback = std::bind(&ModuleConfig::ParseBlocklistCallback, &config, _1);
++        config.ParseCfg(release_base_path + "/modules.blocklist", blocklist_callback);
+         config.ParseCfg(base_path + "/modules.blocklist", blocklist_callback);
+     }
+ 
++    auto load_callback = std::bind(&ModuleConfig::ParseLoadCallback, &config, _1);
++    config.ParseCfg("/system/etc/" + load_file, load_callback);
++    config.ParseCfg("/data/vendor/" + load_file, load_callback);
++
++    auto options_callback = std::bind(&ModuleConfig::ParseOptionsCallback, &config, _1);
++    config.ParseCfg("/system/etc/modules.options", options_callback);
++    config.ParseCfg("/data/vendor/modules.options", options_callback);
++
++    auto blocklist_callback = std::bind(&ModuleConfig::ParseBlocklistCallback, &config, _1);
++    config.ParseCfg("/system/etc/modules.blocklist", blocklist_callback);
++    config.ParseCfg("/data/vendor/modules.blocklist", blocklist_callback);
++
+     config.ParseKernelCmdlineOptions();
+     return config;
+ }
+@@ -260,7 +288,7 @@ bool ModuleConfig::ParseBlocklistCallback(const std::vector<std::string>& args)
+     auto it = args.begin();
+     const std::string& type = *it++;
+ 
+-    if (type != "blocklist") {
++    if (type != "blocklist" && type != "deferred") {
+         LOG(ERROR) << "non-blocklist line encountered in modules.blocklist";
+         return false;
+     }
+@@ -276,7 +304,15 @@ bool ModuleConfig::ParseBlocklistCallback(const std::vector<std::string>& args)
+     if (canonical_name.empty()) {
+         return false;
+     }
+-    this->module_blocklist.emplace(canonical_name);
++    if (type == "blocklist") {
++        this->module_blocklist.emplace(canonical_name);
++    } else if (type == "deferred") {
++        for (const auto& [alias, aliased_module] : this->module_aliases) {
++            if (CanonicalizeModulePath(aliased_module) == canonical_name) {
++                this->module_deferred.push_back(alias);
++            }
++        }
++    }
+ 
+     return true;
+ }
+-- 
+2.39.5
+

@@ -1,0 +1,64 @@
+From a0b2de38dafaa287cede7517a719fcd5b0d91820 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Tue, 17 Nov 2026 16:27:00 +1000
+Subject: [PATCH] los-tv: load radeon.ko under Enforcing, label clone/drmfb
+ composer services
+
+ueventd only had module_load for vendor_file; /system/lib/modules is
+system_lib_file, so radeon.ko never loaded under Enforcing, init.sh saw
+only simpledrm and SurfaceFlinger looped on the fbdev default_clone
+composer.  Also:
+- init GPU detection: sysfs_gpu + sysfs lnk_file read (sysfs:file open
+  is neverallow-blocked for init);
+- composer3 IComposer/default_clone and /drmfb labelled
+  hal_graphics_composer_service (default_android_service is neverallow);
+- bootanim maps allocator-HAL memfd buffers.
+---
+ sepolicy/vendor/los-tv.te        | 20 ++++++++++++++++++++
+ sepolicy/vendor/service_contexts |  6 ++++++
+ 2 files changed, 26 insertions(+)
+ create mode 100644 sepolicy/vendor/service_contexts
+
+diff --git a/sepolicy/vendor/los-tv.te b/sepolicy/vendor/los-tv.te
+index 59f00d7..7033bb7 100644
+--- a/sepolicy/vendor/los-tv.te
++++ b/sepolicy/vendor/los-tv.te
+@@ -69,3 +69,23 @@ allow hal_graphics_composer_default sysfs_gpu:file r_file_perms;
+ # type; SurfaceFlinger must map and write them (otherwise RenderEngine aborts
+ # with "output buffer not gpu writeable").
+ allow surfaceflinger hal_graphics_allocator_default_tmpfs:file { read write map };
++
++# --- Enforcing boot fix #2 (2026-11-17, OTA #4) ---
++# ueventd грузит модули из /system/lib/modules (system_lib_file); базовая
++# политика даёт только vendor_file. Без этого radeon.ko НЕ загружается,
++# init.sh видит только simpledrm и выбирает fbdev-композитор default_clone,
++# SurfaceFlinger уходит в цикл рестартов.
++allow ueventd system_lib_file:file r_file_perms;
++allow ueventd system_lib_file:system module_load;
++allow ueventd kernel:system module_request;
++
++# init.sh (GPU detection: lspci + readlink /sys/class/drm/card*/device/driver).
++# init sysfs:file open запрещён neverallow, поэтому только sysfs_gpu и lnk_file.
++allow init sysfs_gpu:dir r_dir_perms;
++allow init sysfs_gpu:file r_file_perms;
++allow init sysfs_gpu:lnk_file { read getattr };
++allow init sysfs:lnk_file { read getattr };
++
++# bootanim маппит gralloc-memfd (tmpfs-тип домена allocator HAL).
++allow bootanim hal_graphics_allocator_default_tmpfs:file { read write map };
++allow bootanim tmpfs:file { map };
+diff --git a/sepolicy/vendor/service_contexts b/sepolicy/vendor/service_contexts
+new file mode 100644
+index 0000000..3b3f7ee
+--- /dev/null
++++ b/sepolicy/vendor/service_contexts
+@@ -0,0 +1,6 @@
++# los-tv: composer3 service instances registered by the fbdev clone and the
++# drmfb composer fall back to default_android_service; allowing
++# default_android_service is neverallow-blocked.  Label them as the public
++# hal_graphics_composer_service so hal_client_domain(surfaceflinger) can find.
++android.hardware.graphics.composer3.IComposer/default_clone u:object_r:hal_graphics_composer_service:s0
++android.hardware.graphics.composer3.IComposer/drmfb u:object_r:hal_graphics_composer_service:s0
+-- 
+2.39.5
+

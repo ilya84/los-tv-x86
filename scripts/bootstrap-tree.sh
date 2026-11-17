@@ -32,7 +32,7 @@ TREE="${TREE:-$HOME/android/los-tv-23}"
 TOOLS="${LOS_TV_TOOLS:-$HOME/android/tools}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 AAROPA_SOURCE="${AAROPA_SOURCE:-bliss}"
-EXPECTED_SFS_BASE="5786133db5f5bbc5b45c090482057e57"
+EXPECTED_SFS_BASE="4ef2af1cb15edcf08efd3f1392f47581"
 
 CHECK=0
 FETCH_PREBUILTS=1
@@ -98,6 +98,30 @@ if [ "$CHECK" = "1" ]; then
     warn "--check: apply-patches.sh не запускаю (он меняет дерево)"
 else
     bash "$HERE/scripts/apply-patches.sh" "$TREE"
+fi
+
+# --- 1b. Chromium WebView: Git LFS ---------------------------------------
+log "1b. Chromium WebView (Git LFS)"
+WV_REPO="$TREE/external/chromium-webview"
+WV_APK="$WV_REPO/prebuilt/x86_64/webview.apk"
+if [ -f "$WV_APK" ] && head -c 200 "$WV_APK" | grep -q "git-lfs.github.com/spec"; then
+    if [ "$CHECK" = "1" ]; then
+        warn "webview.apk — Git LFS pointer; нужен git lfs pull"
+    else
+        ok "webview.apk — LFS pointer, качаю"
+        git -C "$WV_REPO" lfs pull --include="prebuilt/x86_64/webview.apk"
+    fi
+fi
+if [ -f "$WV_APK" ]; then
+    if head -c 200 "$WV_APK" | grep -q "git-lfs.github.com/spec"; then
+        warn "webview.apk остался Git LFS pointer"
+        [ "$CHECK" = "1" ] || die "webview.apk не скачан через git lfs"
+    else
+        unzip -t "$WV_APK" >/dev/null 2>&1 || die "webview.apk повреждён (unzip -t)"
+        ok "webview.apk: $(stat -c%s "$WV_APK") байт, zip ok"
+    fi
+else
+    warn "нет $WV_APK"
 fi
 
 # --- 2. Prebuilt APK ------------------------------------------------------

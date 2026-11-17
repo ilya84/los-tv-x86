@@ -1,0 +1,104 @@
+From 39df3e27d12d6d8da9f8b9555c1784a391fff949 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Wed, 18 Nov 2026 00:22:16 +1000
+Subject: [PATCH 5/6] los-tv: rebind HDA at bootcomplete to fix RTP -19 under
+ Enforcing
+
+---
+ init.sh                        | 36 ++++++++++++++++++++++++++++++++++
+ sepolicy/vendor/genfs_contexts |  5 +++++
+ sepolicy/vendor/los-tv.te      | 12 ++++++++++++
+ 3 files changed, 53 insertions(+)
+
+diff --git a/init.sh b/init.sh
+index 6003b01..c9e366f 100644
+--- a/init.sh
++++ b/init.sh
+@@ -170,6 +170,39 @@ function init_hal_brcm_wifi()
+ 	esac
+ }
+ 
++# los-tv (step 2.2): на x86 с radeon + HDA модуль snd-hda-intel грузится
++# ueventd раньше, чем регистрируется radeon audio component.  Проба кодеков
++# падает ("Cannot probe codecs, giving up"), /proc/asound/cards пуст, и
++# AudioPolicyManager не создаётся: "Default device AUDIO_DEVICE_OUT_SPEAKER
++# is unreachable" → audioserver без политики → AudioRecord(REMOTE_SUBMIX)
++# возвращает -19 и RTP не работает.  К bootcomplete контроллер уже готов,
++# поэтому один раз перепривязываем его к драйверу и перезапускаем audioserver.
++# Проверено на e3000n: после rebind появляются card0 HDMI и card1 Generic,
++# RTP state=on.  Метка sysfs_hda — см. sepolicy/vendor/{genfs_contexts,los-tv.te}.
++function los_tv_hda_rebind()
++{
++	# Есть хотя бы одна не-HDMI карта (PCH/Generic/USB) — политика сможет
++	# открыть Speaker, ничего не трогаем.
++	if grep -E '^[[:space:]]*[0-9]+ \[' /proc/asound/cards 2>/dev/null | grep -qv HDMI; then
++		return 0
++	fi
++
++	local d b
++	for d in /sys/bus/pci/drivers/snd_hda_intel/????:*; do
++		[ -e "$d" ] || continue
++		b=$(basename "$d")
++		echo "init.sh: hda rebind $b" > /dev/kmsg
++		echo "$b" > /sys/bus/pci/drivers/snd_hda_intel/unbind 2>/dev/null
++		echo "$b" > /sys/bus/pci/drivers/snd_hda_intel/bind 2>/dev/null
++	done
++
++	if grep -E '^[[:space:]]*[0-9]+ \[' /proc/asound/cards 2>/dev/null | grep -qv HDMI; then
++		echo "init.sh: hda cards present, restart audioserver" > /dev/kmsg
++		stop audioserver
++		start audioserver
++	fi
++}
++
+ function init_hal_audio_bootcomplete()
+ {
+ 	if [ -e "/data/vendor/asound.state" ]; then
+@@ -1022,6 +1055,9 @@ function do_bootcomplete()
+         set_property power.nonboot-cpu-off 1
+     fi
+ 
++	# los-tv: перепривязать HDA, если кодеки не успели пробнуться на boot
++	los_tv_hda_rebind
++
+ 	# initialize audio in bootcomplete
+ 	init_hal_audio_bootcomplete
+ 
+diff --git a/sepolicy/vendor/genfs_contexts b/sepolicy/vendor/genfs_contexts
+index f3ca64a..ddef0c6 100644
+--- a/sepolicy/vendor/genfs_contexts
++++ b/sepolicy/vendor/genfs_contexts
+@@ -1,2 +1,7 @@
+ # DMI
+ genfscon sysfs /devices/virtual/dmi/id				u:object_r:vendor_sysfs_dmi_id:s0
++
++# HDA rebind (los-tv): see los-tv.te.  init.sh rewrites these sysfs files at
++# bootcomplete when snd-hda-intel probed the codecs too early (radeon race).
++genfscon sysfs /bus/pci/drivers/snd_hda_intel/bind	u:object_r:sysfs_hda:s0
++genfscon sysfs /bus/pci/drivers/snd_hda_intel/unbind	u:object_r:sysfs_hda:s0
+diff --git a/sepolicy/vendor/los-tv.te b/sepolicy/vendor/los-tv.te
+index 7033bb7..9c93fa2 100644
+--- a/sepolicy/vendor/los-tv.te
++++ b/sepolicy/vendor/los-tv.te
+@@ -86,6 +86,18 @@ allow init sysfs_gpu:file r_file_perms;
+ allow init sysfs_gpu:lnk_file { read getattr };
+ allow init sysfs:lnk_file { read getattr };
+ 
++# --- Enforcing boot fix #3 (2026-11-18, step 2.2) ---
++# radeon + HDA race: snd-hda-intel probes codecs before the radeon audio
++# component is registered, gives up and never retries.  /proc/asound/cards
++# stays empty, AudioPolicyManager deletes itself ("Default device
++# AUDIO_DEVICE_OUT_SPEAKER is unreachable"), audioserver has no policy and
++# AudioRecord(REMOTE_SUBMIX) fails with -19.  At bootcomplete the controller
++# is ready, so init.sh unbinds/binds it once.  sysfs:file open/write is a
++# neverallow for init, hence a private label for just these two files.
++type sysfs_hda, fs_type, sysfs_type;
++allow init sysfs_hda:dir r_dir_perms;
++allow init sysfs_hda:file w_file_perms;
++
+ # bootanim маппит gralloc-memfd (tmpfs-тип домена allocator HAL).
+ allow bootanim hal_graphics_allocator_default_tmpfs:file { read write map };
+ allow bootanim tmpfs:file { map };
+-- 
+2.39.5
+

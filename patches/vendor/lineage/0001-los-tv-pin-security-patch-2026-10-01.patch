@@ -1,0 +1,22 @@
+From b30df11af4f6ac57dcb588bd8226f082117d3a5a Mon Sep 17 00:00:00 2001
+From: los-tv <kacnep.0000@gmail.com>
+Date: Mon, 16 Nov 2026 21:44:27 +1000
+Subject: [PATCH] los-tv: pin bp4a security patch to 2026-10-01
+
+---
+ .../flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto  | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto b/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
+index ebdbe0b..8d173bc 100644
+--- a/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
++++ b/release/flag_values/bp4a/RELEASE_PLATFORM_SECURITY_PATCH.textproto
+@@ -1,4 +1,4 @@
+ name: "RELEASE_PLATFORM_SECURITY_PATCH"
+ value {
+-  string_value: "2026-11-01"
++  string_value: "2026-10-01"
+ }
+-- 
+2.39.5
+
