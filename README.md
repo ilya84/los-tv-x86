@@ -96,8 +96,9 @@ GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data), `system_a/b`,
 ## Статус и ограничения
 
 - Сборка **userdebug**, SELinux **Enforcing** проверен на `e3000n`
-  (AMD, 2026-11-18) и Intel H81M (2026-11-07); текущие сборки —
-  release-keys, `ro.build.tags=release-keys`; security patch `2026-11-01`.
+  (чистая установка ISO и первый boot — **PASS 2026-11-19**) и Intel
+  H81M (2026-11-07); текущие сборки — release-keys,
+  `ro.build.tags=release-keys`; security patch `2026-11-01`.
 - Шифрование данных не настроено. Recovery работает permissive
   (исключение только для recovery; normal boot — Enforcing).
 - `system.img` — 6,0 ГБ (фактический образ 5 999 996 928 Б, content

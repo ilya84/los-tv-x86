@@ -364,10 +364,11 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 - Recovery permissive (system/core `0004` + recovery `0003`/`0004`);
   normal boot Enforcing. Installer передаёт
   `androidboot.selinux=permissive` для recovery-пунктов.
-- Чистая установка ISO: Calamares завершается, GPT/слоты/GRUB
-  создаются; первый boot Android в QEMU/OVMF не показателен
-  (виртуальный GPU: `avc denied` graphics.allocator, system_server без
-  `activity`) — нужен тест на реальном железе.
+- Чистая установка ISO: **hardware e3000n PASS 2026-11-19** —
+  Calamares, GPT/слоты/GRUB, первый boot, `_a` clean + `_b` add-on,
+  Enforcing, recovery permissive, RTP 5006/тон, BT, add-on. QEMU/OVMF
+  для Android boot не показателен (виртуальный GPU: `avc denied`
+  graphics.allocator, system_server без `activity`).
 - Обязательность SSE4.2 не подтверждена (в работе).
 - Видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
 - WMS↔InputDispatcher focus desync после OTA на bp4a `1794711917`

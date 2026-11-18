@@ -6,6 +6,24 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-19 — hardware clean-install PASS (e3000n)
+
+- ISO `lineage-23.2-20261118-UNOFFICIAL-x86_64_tv.iso` установлен на
+  e3000n (UEFI, erase disk) — Calamares и первый boot PASS.
+- `_a` — чистый install `1794960573` (8 ГиБ slot, recovery 64 МиБ);
+  `_b` — clone `_a` + add-on, active. `sys.boot_completed=1`,
+  Enforcing, security `2026-11-01`, release-keys.
+- Recovery `_a`/`_b` — permissive; `recovery_a/b` = padded
+  `ramdisk-recovery.img` (`bfeb7e35…`).
+- RTP `192.168.5.150:5006`: state on, `200pps`, tone `rms=1134 err=0`;
+  audiohub `rtp5006 source=192.168.5.154`; HDA rebind/restart audioserver
+  подтверждены. BT: Xiaomi RC, Bonded 1, HOGP state=2, input OK.
+- Add-on: Play Store `53.4.17-34`, YouTube `7.31.301` base+split,
+  microG `0.3.17.252432`, NDK, Widevine; `addon_installed=1`.
+- QEMU/OVMF остаётся непригодным для проверки Android boot
+  (виртуальный GPU: `avc denied` graphics.allocator) — hardware-тест
+  выше это закрыл. `intel` не тронут.
+
 ## 2026-11-18 — 23.2 freeze: upstream+patches, recovery permissive, ISO
 
 - Зафиксирован release-baseline 23.2: чистое дерево
@@ -54,7 +72,8 @@
   Slot selection/разрешение. Первый boot Android в QEMU/OVMF не
   показателен: виртуальный GPU (bochs) даёт `avc denied` на
   `graphics.allocator`, `system_server` не поднимает `activity`; это
-  ограничение QEMU-стенда, проверка на реальном железе остаётся.
+  ограничение QEMU-стенда. Hardware clean-install на e3000n — PASS
+  (2026-11-19, см. раздел выше).
 - Release bundle: resolved `manifest.xml` (1123 проекта, qcom=0),
   полный manifest, patches, installer, scripts, OTA, ISO,
   `SHA256SUMS`, `RELEASE.md`.
