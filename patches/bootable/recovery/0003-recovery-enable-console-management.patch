@@ -1,0 +1,321 @@
+From 48c04b1319250428c2e2edc76bae1838e5d5a878 Mon Sep 17 00:00:00 2001
+From: hmtheboy154 <buingoc67@gmail.com>
+Date: Thu, 26 Mar 2026 10:02:04 -0400
+Subject: [PATCH 3/4] recovery: enable console management
+
+This patch enables switching to a virtual terminal (console) by pressing Alt+F1,
+and returning to the recovery GUI using Alt+F7, similar to Android-x86/BlissOS.
+
+- Implements a VT manager thread in minui graphics to handle SIGUSR1/SIGUSR2.
+- Adds DropMaster/SetMaster to DRM and FBDEV backends to properly route
+  display buffers and CRTC states when switching contexts.
+- Prevents input event processing and background progress thread drawing
+  while in the console to avoid frame collision and frozen inputs.
+- Triggers a full UI redraw upon returning to VT7.
+
+Signed-off-by: hmtheboy154 <buingoc67@gmail.com>
+---
+ minui/graphics.cpp          | 94 +++++++++++++++++++++++++++++++++++++
+ minui/graphics.h            |  4 ++
+ minui/graphics_drm.cpp      | 26 ++++++++++
+ minui/graphics_drm.h        |  3 ++
+ minui/graphics_fbdev.cpp    | 13 +++++
+ minui/graphics_fbdev.h      |  3 ++
+ minui/include/minui/minui.h |  7 +++
+ recovery_ui/screen_ui.cpp   |  6 +++
+ recovery_ui/ui.cpp          |  5 ++
+ 9 files changed, 161 insertions(+)
+
+diff --git a/minui/graphics.cpp b/minui/graphics.cpp
+index d94d2f32..01c9353b 100644
+--- a/minui/graphics.cpp
++++ b/minui/graphics.cpp
+@@ -21,15 +21,26 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include <atomic>
++#include <functional>
+ #include <memory>
+ 
+ #include <android-base/properties.h>
+ 
++#include <linux/vt.h>
++#include <linux/kd.h>
++#include <termios.h>
++#include <signal.h>
++#include <pthread.h>
++
+ #include "graphics_drm.h"
+ #include "graphics_drm_qti.h"
+ #include "graphics_fbdev.h"
+ #include "minui/minui.h"
+ 
++std::atomic<bool> is_in_console(false);
++std::function<void()> gr_on_acquire_console = nullptr;
++
+ static GRFont* gr_font = nullptr;
+ static GRFont* gr_font_menu = nullptr;
+ static MinuiBackend* gr_backend = nullptr;
+@@ -391,6 +402,9 @@ int gr_init_font(const char* name, GRFont** dest) {
+ }
+ 
+ void gr_flip() {
++  // Prevent fighting with the console for display ownership
++  if (is_in_console) return;
++
+   gr_draw = gr_backend->Flip();
+ }
+ 
+@@ -409,6 +423,83 @@ std::unique_ptr<MinuiBackend> create_backend(GraphicsBackend backend) {
+   }
+ }
+ 
++constexpr int ANDROID_VT = 7;
++static int console_fd = -1;
++static pthread_t console_thread;
++
++static void sig_handler(int /* sig */) {
++    // Dummy handler to interrupt sigwait
++}
++
++static void* console_manager_loop(void* /* arg */) {
++    struct vt_mode vm;
++    vm.mode = VT_PROCESS;
++    vm.waitv = 0;
++    vm.relsig = SIGUSR1;
++    vm.acqsig = SIGUSR2;
++    vm.frsig = 0;
++
++    struct sigaction act;
++    sigemptyset(&act.sa_mask);
++    act.sa_handler = sig_handler;
++    act.sa_flags = 0;
++    sigaction(vm.relsig, &act, NULL);
++    sigaction(vm.acqsig, &act, NULL);
++
++    sigset_t mask;
++    sigemptyset(&mask);
++    sigaddset(&mask, vm.relsig);
++    sigaddset(&mask, vm.acqsig);
++    pthread_sigmask(SIG_BLOCK, &mask, NULL);
++
++    if (ioctl(console_fd, VT_SETMODE, &vm) < 0) {
++        printf("Failed to set VT_PROCESS\n");
++        return nullptr;
++    }
++
++    int sig = 0;
++    while (true) {
++        sigwait(&mask, &sig);
++
++        if (sig == vm.relsig) {
++            is_in_console = true;  // Lock out progress_thread from drawing
++            
++            if (gr_backend) gr_backend->DropMaster();
++            ioctl(console_fd, VT_RELDISP, 1);
++            
++        } else if (sig == vm.acqsig) {
++            ioctl(console_fd, VT_RELDISP, VT_ACKACQ);
++            if (gr_backend) gr_backend->SetMaster();
++            
++            is_in_console = false; // Restore drawing permissions for minui
++            
++            if (gr_on_acquire_console) {
++                gr_on_acquire_console(); // Wake up RecoveryUI to trigger a full redraw
++            }
++        }
++    }
++    return nullptr;
++}
++
++static void init_console_manager() {
++    int fd = open("/dev/tty0", O_RDWR | O_SYNC | O_CLOEXEC);
++    if (fd < 0) return;
++
++    // Force Kernel to switch to VT 7
++    ioctl(fd, VT_ACTIVATE, ANDROID_VT);
++    ioctl(fd, VT_WAITACTIVE, ANDROID_VT);
++
++    // Close the old fd (pointing to VT 1) and reopen to get VT 7's fd
++    close(fd);
++    console_fd = open("/dev/tty0", O_RDWR | O_SYNC | O_CLOEXEC);
++    if (console_fd < 0) return;
++
++    // Switch VT 7 to Graphics mode (for minui)
++    ioctl(console_fd, KDSETMODE, (void*)KD_GRAPHICS);
++
++    pthread_create(&console_thread, nullptr, console_manager_loop, nullptr);
++}
++
+ int gr_init() {
+   return gr_init(default_backends);
+ }
+@@ -504,6 +595,9 @@ int gr_init(std::initializer_list<GraphicsBackend> backends) {
+     printf("gr_init: Only 4-byte pixel formats supported\n");
+   }
+ 
++  // Start the console virtual terminal manager
++  init_console_manager();
++
+   return 0;
+ }
+ 
+diff --git a/minui/graphics.h b/minui/graphics.h
+index ff063ae2..b6b371bf 100644
+--- a/minui/graphics.h
++++ b/minui/graphics.h
+@@ -45,6 +45,10 @@ class MinuiBackend {
+ 
+   // Device cleanup when drawing is done.
+   virtual ~MinuiBackend() = default;
++
++  // Release/Acquire display ownership for VT switching
++  virtual void DropMaster() = 0;
++  virtual void SetMaster() = 0;
+ };
+ 
+ #endif  // _GRAPHICS_H_
+diff --git a/minui/graphics_drm.cpp b/minui/graphics_drm.cpp
+index bc732119..f8ae3cbd 100644
+--- a/minui/graphics_drm.cpp
++++ b/minui/graphics_drm.cpp
+@@ -466,6 +466,32 @@ GRSurface* MinuiBackendDrm::Flip() {
+   return surface;
+ }
+ 
++void MinuiBackendDrm::DropMaster() {
++  if (drm_fd >= 0) {
++    // Disable minui's CRTC so kernel fbcon can take over the display
++    DrmInterface* current_drm = &drm[active_display];
++    if (current_drm->monitor_crtc) {
++      DrmDisableCrtc(drm_fd, current_drm->monitor_crtc);
++    }
++    
++    drmDropMaster(drm_fd);
++  }
++}
++
++void MinuiBackendDrm::SetMaster() {
++  if (drm_fd >= 0) {
++    drmSetMaster(drm_fd);
++    
++    // Force hardware (CRTC) to immediately display minui's current buffer
++    DrmInterface* current_drm = &drm[active_display];
++    if (current_drm->monitor_crtc) {
++      DrmEnableCrtc(drm_fd, current_drm->monitor_crtc,
++                    current_drm->GRSurfaceDrms[current_drm->current_buffer],
++                    &current_drm->monitor_connector->connector_id);
++    }
++  }
++}
++
+ MinuiBackendDrm::~MinuiBackendDrm() {
+   for (int i = 0; i < DRM_MAX; i++) {
+     if (drm[i].monitor_connector) {
+diff --git a/minui/graphics_drm.h b/minui/graphics_drm.h
+index a8c9886e..cef0ca18 100644
+--- a/minui/graphics_drm.h
++++ b/minui/graphics_drm.h
+@@ -79,4 +79,7 @@ class MinuiBackendDrm : public MinuiBackend {
+ 
+   int drm_fd{ -1 };
+   DrmConnector active_display = DRM_MAIN;
++
++  void DropMaster() override;
++  void SetMaster() override;
+ };
+diff --git a/minui/graphics_fbdev.cpp b/minui/graphics_fbdev.cpp
+index c3e9c108..36bdbb89 100644
+--- a/minui/graphics_fbdev.cpp
++++ b/minui/graphics_fbdev.cpp
+@@ -162,6 +162,19 @@ next_fb:
+   return gr_draw;
+ }
+ 
++void MinuiBackendFbdev::DropMaster() {
++  // When switching to Console, force the hardware to scroll to yoffset = 0
++  // so kernel (fbcon) drawings on Buffer 0 are visible immediately.
++  vi.yoffset = 0;
++  ioctl(fb_fd.get(), FBIOPUT_VSCREENINFO, &vi);
++}
++
++void MinuiBackendFbdev::SetMaster() {
++  // When returning to GUI, call minui's built-in function to force the
++  // hardware to display the buffer currently used by Recovery.
++  SetDisplayedFramebuffer(displayed_buffer);
++}
++
+ GRSurface* MinuiBackendFbdev::Flip() {
+   if (double_buffered) {
+     // Change gr_draw to point to the buffer currently displayed, then flip the driver so we're
+diff --git a/minui/graphics_fbdev.h b/minui/graphics_fbdev.h
+index c772428d..b1ec8c6e 100644
+--- a/minui/graphics_fbdev.h
++++ b/minui/graphics_fbdev.h
+@@ -70,4 +70,7 @@ class MinuiBackendFbdev : public MinuiBackend {
+   size_t displayed_buffer{ 0 };
+   fb_var_screeninfo vi;
+   android::base::unique_fd fb_fd;
++
++  void DropMaster() override;
++  void SetMaster() override;
+ };
+diff --git a/minui/include/minui/minui.h b/minui/include/minui/minui.h
+index 183a015e..3f2a43fe 100644
+--- a/minui/include/minui/minui.h
++++ b/minui/include/minui/minui.h
+@@ -20,6 +20,7 @@
+ #include <stdlib.h>
+ #include <sys/types.h>
+ 
++#include <atomic>
+ #include <functional>
+ #include <memory>
+ #include <string>
+@@ -242,3 +243,9 @@ std::vector<std::string> get_locales_in_png(const std::string& png_name);
+ // Free a surface allocated by any of the res_create_*_surface()
+ // functions.
+ void res_free_surface(GRSurface* surface);
++
++// Flag indicating we are in Console to prevent overlapping draws
++extern std::atomic<bool> is_in_console;
++
++// Callback to notify RecoveryUI that GUI has been restored
++extern std::function<void()> gr_on_acquire_console;
+diff --git a/recovery_ui/screen_ui.cpp b/recovery_ui/screen_ui.cpp
+index 2d9e6ec0..05d95038 100644
+--- a/recovery_ui/screen_ui.cpp
++++ b/recovery_ui/screen_ui.cpp
+@@ -1166,6 +1166,12 @@ bool ScreenRecoveryUI::Init(const std::string& locale) {
+   }
+   is_graphics_available = true;
+ 
++  gr_on_acquire_console = [this]() {
++    std::lock_guard<std::mutex> lg(this->updateMutex);
++    this->pagesIdentical = false; // Invalidate the cache to force a full redraw
++    this->update_screen_locked(); // Draw background and UI immediately
++  };
++
+   if (!InitTextParams()) {
+     return false;
+   }
+diff --git a/recovery_ui/ui.cpp b/recovery_ui/ui.cpp
+index ead4c51c..c8e590a8 100644
+--- a/recovery_ui/ui.cpp
++++ b/recovery_ui/ui.cpp
+@@ -340,6 +340,11 @@ int RecoveryUI::OnInputEvent(int fd, uint32_t epevents) {
+     return -1;
+   }
+ 
++  // Drop the event if we are in the console VT
++  if (is_in_console) {
++    return 0;
++  }
++
+   // Analog Dpad handling.
+   if (ev.type == EV_ABS && (ev.code == ABS_HAT0Y || ev.code == ABS_HAT0X)) {
+     switch (ev.value) {
+-- 
+2.39.5
+

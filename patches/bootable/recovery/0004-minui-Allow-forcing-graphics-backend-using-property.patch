@@ -1,0 +1,31 @@
+From 391f9c9f31c38a54ac2577b3eaa637bcb691e55a Mon Sep 17 00:00:00 2001
+From: hmtheboy154 <buingoc67@gmail.com>
+Date: Thu, 26 Mar 2026 10:08:46 -0400
+Subject: [PATCH 4/4] minui: Allow forcing graphics backend using property
+
+Signed-off-by: hmtheboy154 <buingoc67@gmail.com>
+---
+ minui/graphics.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/minui/graphics.cpp b/minui/graphics.cpp
+index 01c9353b..1b7dc329 100644
+--- a/minui/graphics.cpp
++++ b/minui/graphics.cpp
+@@ -501,6 +501,13 @@ static void init_console_manager() {
+ }
+ 
+ int gr_init() {
++  std::string backend_prop = android::base::GetProperty("ro.minui.graphics_backend", "");
++  if (backend_prop == "fbdev") {
++    return gr_init({ GraphicsBackend::FBDEV });
++  } else if (backend_prop == "drm") {
++    return gr_init({ GraphicsBackend::DRM });
++  }
++
+   return gr_init(default_backends);
+ }
+ 
+-- 
+2.39.5
+

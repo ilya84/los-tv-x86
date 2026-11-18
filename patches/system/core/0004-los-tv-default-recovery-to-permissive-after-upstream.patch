@@ -1,0 +1,31 @@
+From 53a4306668ab3e7e7031ab94959081ebc5aee94b Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Wed, 18 Nov 2026 10:06:25 +1000
+Subject: [PATCH] los-tv: default recovery to permissive after upstream init
+ change
+
+---
+ init/selinux.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/init/selinux.cpp b/init/selinux.cpp
+index 93f6312a7..238b2ff24 100644
+--- a/init/selinux.cpp
++++ b/init/selinux.cpp
+@@ -101,6 +101,13 @@ enum EnforcingStatus { SELINUX_PERMISSIVE, SELINUX_ENFORCING };
+ 
+ EnforcingStatus StatusFromProperty() {
+     std::string value;
++    // los-tv: recovery has always been permissive on this x86 port.  New
++    // upstream init defaults to enforcing when androidboot.selinux is absent;
++    // GRUB recovery entries (and the BCB/sideload path) do not pass it, so
++    // recovery would load policy enforcing and die before its UI starts.
++    if (IsRecoveryMode()) {
++        return SELINUX_PERMISSIVE;
++    }
+     if (android::fs_mgr::GetKernelCmdline("androidboot.selinux", &value) && value == "permissive") {
+         return SELINUX_PERMISSIVE;
+     }
+-- 
+2.39.5
+

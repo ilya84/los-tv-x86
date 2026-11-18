@@ -12,6 +12,8 @@
 bootable/aaropa	patches/bootable/aaropa/0001-los-tv-initrd-on-Bliss-Bass-8c6a69f-BCB-recovery-mod.patch
 bootable/recovery	patches/bootable/recovery/0001-los-tv-recovery-sideload-auto-reboot-on-success-for-.patch
 bootable/recovery	patches/bootable/recovery/0002-los-tv-recovery-ui-link-liblog.patch
+bootable/recovery	patches/bootable/recovery/0003-recovery-enable-console-management.patch
+bootable/recovery	patches/bootable/recovery/0004-minui-Allow-forcing-graphics-backend-using-property.patch
 build/release	patches/build/release/0001-los-tv-disable-volume_group_management_update-for-tr.patch
 build/soong	patches/build/soong/0001-los-tv-fsgen-map-tv-recovery-density-to-xhdpi.patch
 build/soong	patches/build/soong/0002-los-tv-x86-androidmk-allowlist-host-path.patch
@@ -49,5 +51,6 @@ system/apex	patches/system/apex/0001-los-tv-apexd-longer-wait-for-dev-loop-contr
 system/core	patches/system/core/0001-los-tv-init-keep-initrd-devtmpfs-persist-early-boot-.patch
 system/core	patches/system/core/0002-los-tv-port-aosp-x86-init-fixes.patch
 system/core	patches/system/core/0003-los-tv-ueventd-modalias-x86-firmware-dirs.patch
+system/core	patches/system/core/0004-los-tv-default-recovery-to-permissive-after-upstream.patch
 system/extras	patches/system/extras/0001-los-tv-lpunpack_dev-device-build-for-proprietary-add.patch
 system/sepolicy	patches/system/sepolicy/0001-los-tv-SELinux-media-audio-memfd-rules-c2-ffmpeg-Wid.patch
