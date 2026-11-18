@@ -188,11 +188,11 @@ set RECOVERY_EXTRA=""
 set SELINUX_ENTRY="androidboot.selinux=enforcing"
 if [ "$MODE" = "recovery" ]; then
 	set RECOVERY_EXTRA="androidboot.force_normal_boot=0"
-	set SELINUX_ENTRY=""
+	set SELINUX_ENTRY="androidboot.selinux=permissive"
 fi
 if [ "$MODE" = "sideload" ]; then
 	set RECOVERY_EXTRA="androidboot.force_normal_boot=0"
-	set SELINUX_ENTRY=""
+	set SELINUX_ENTRY="androidboot.selinux=permissive"
 fi
 set BOOT_MODE="$MODE"
 if [ "$MODE" = "sideload" ]; then
@@ -208,7 +208,7 @@ EOF
 # ВАЖНО: это должны быть строки grub.cfg, а не shell-код генератора —
 # $prefix вычисляется уже в GRUB, при загрузке.
 echo "if [ -f \$prefix/addon-pending ]; then"
-emit_entry nosave " - Установка компонентов (авто)" "-Auto-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1"
+emit_entry nosave " - Установка компонентов (авто)" "-Auto-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1 androidboot.selinux=permissive"
 echo "fi"
 
 # Основной пункт — активный слот из android.cfg. Динамический заголовок:
@@ -218,13 +218,13 @@ emit_entry save "\$MODE_SUFFIX" "-\$SLOT" "\$BOOT_MODE" "\$SLOT" "\$RECOVERY_EXT
 # Компактное Recovery рядом с основным пунктом: stock-подменю "Recovery modes"
 # убрано (тема рисует ~6 строк, иначе пункты уезжают за экран).
 echo "submenu '$(echo "Recovery" | grub_quote)' --class recovery ${CLASS} \$menuentry_id_option '${OS}-${TITLE// /_}-Recovery' {"
-emit_entry nosave " - Recovery" "-Recovery-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0" | grub_add_tab
-emit_entry nosave " - Recovery (ignore first eth)" "-Recovery-ignore-first-eth-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 ignore_first_eth" | grub_add_tab
+emit_entry nosave " - Recovery" "-Recovery-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.selinux=permissive" | grub_add_tab
+emit_entry nosave " - Recovery (ignore first eth)" "-Recovery-ignore-first-eth-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 ignore_first_eth androidboot.selinux=permissive" | grub_add_tab
 	# los-tv: установка проприетарных компонентов (Widevine, NDK
 	# translation, Play Store) из recovery. Драйвер сам извлекает
 	# файлы из образов, ставит их в неактивный слот и перезагружает
 	# устройство (см. init.recovery.sh).
-	emit_entry nosave " - Установить проприетарные компоненты" "-Recovery-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1" | grub_add_tab
+	emit_entry nosave " - Установить проприетарные компоненты" "-Recovery-addon-\$SLOT" recovery "\$SLOT" "androidboot.force_normal_boot=0 androidboot.los_tv_addon=1 androidboot.selinux=permissive" | grub_add_tab
 echo "}"
 
 # Ручной выбор слота. savedefault здесь НЕ вызывается: иначе GRUB запомнил бы
