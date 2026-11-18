@@ -6,6 +6,66 @@
 
 Формат: дата — этап — что сделано.
 
+## 2026-11-18 — 23.2 freeze: upstream+patches, recovery permissive, ISO
+
+- Зафиксирован release-baseline 23.2: чистое дерево
+  `@los-23-tv-clean` (upstream LineageOS/android-generic + helper
+  `patches/series`), 1123 проекта, qcom = 0; device tree `64f1509`,
+  system/core `53a430666`, bootable/recovery `391f9c9f`. Manifest
+  переведён на upstream LineageOS для 20 изменённых проектов
+  (`android-x86/05-modified.xml`), остальные — `los-tv-x86`/`ilya84`/
+  `ag-github`; release-ветка/тег `los-tv-x86-23.2`, helper-тег
+  `los-tv-x86-23.2`.
+- Security patch — `2026-11-01` (upstream `vendor/lineage` `1a4ed79a`);
+  локальный pin `2026-10-01` удалён из series, OTA metadata
+  `post-security-patch-level=2026-11-01`.
+- RTP исправлен (device tree `0005`/`0007`/`0008`): на
+  `sys.boot_completed` выполняется HDA rebind (`snd-hda-intel`) и
+  restart `audioserver`; на `e3000n` `state=on`, 200 pps, `err=0`,
+  тон `rms=261`, audiohub source `192.168.5.154`. Enforcing сохранён.
+- Recovery: причина падения — upstream `system/core/init/selinux.cpp`
+  по умолчанию включал Enforcing в recovery; добавлен
+  `IsRecoveryMode() → permissive` (`system/core` `0004`), возвращены
+  recovery `0003`/`0004` (console/minui). Installer `10_blissos`
+  дополнительно передаёт `androidboot.selinux=permissive` для всех
+  recovery/auto-addon пунктов. Normal boot — Enforcing.
+- `system.img` увеличен до 6,0 ГБ (`BOARD_SYSTEMIMAGE_PARTITION_SIZE`,
+  patch `0006`): target image 5 999 996 928 Б, free ext4
+  2 259 353 600 Б (~2,26 ГБ); слот 6 000 000 000 Б. Warning
+  `approaching size limit` ожидаем (file-vs-slot ~3 КиБ).
+- OTA `1794960573`: 1 758 217 372 Б, md5
+  `bcf8c3a099c18a29d924047a8c9612a4`, sha256
+  `f90f78fec28814c82a7c1b7b6a329d6a15afbd1353b7c70f4b82ad03d973a55d`;
+  releasekey, `initrd,kernel,ramdisk-recovery,system`, security
+  `2026-11-01`. Установлена в `_b` `e3000n` штатным sideload через
+  recovery `_a`; `_a` `1794919314` — boot-only fallback.
+- ISO `lineage-23.2-20261118-UNOFFICIAL-x86_64_tv.iso` пересобран с
+  финальным `install.sfs` (`md5 0367c129de084573354300fed35cf5e2`,
+  permissive recovery, `make-ab` system 8192 МБ) и финальным
+  `system.img`/recovery: **2 622 033 920 Б**, md5
+  `82ee0a18fcb755fa51140d851d6d5af8`, sha256
+  `9dcbab684ae28620bc2d6450b48d90e39eda9ac9893d6b66084d6ea89ddbcf25`.
+  Внутри: `install.sfs`, `system.efs` (EROFS-обёртка с `system.img`
+  5 999 996 928 Б, build `1794960573`, security `2026-11-01`,
+  release-keys), `kernel`, `initrd.img`, `ramdisk-recovery.img`.
+- Чистая установка ISO: Calamares проходит до «All done», создаёт GPT
+  (EFI 300 МиБ + ext4 39,7 ГиБ), `make-ab` 8192, `system_a/b.img` 8 ГиБ,
+  `recovery_a/b.img` 64 МиБ; установленный GRUB содержит BlissOS/Recovery/
+  Slot selection/разрешение. Первый boot Android в QEMU/OVMF не
+  показателен: виртуальный GPU (bochs) даёт `avc denied` на
+  `graphics.allocator`, `system_server` не поднимает `activity`; это
+  ограничение QEMU-стенда, проверка на реальном железе остаётся.
+- Release bundle: resolved `manifest.xml` (1123 проекта, qcom=0),
+  полный manifest, patches, installer, scripts, OTA, ISO,
+  `SHA256SUMS`, `RELEASE.md`.
+- Известные ограничения: `_a` e3000n — boot-only fallback с RTP error
+  (рабочий `1794800321` сохранён вне слотов); WMS-workaround остаётся;
+  YouTube ARM code pool ~28–55 ч; delta OTA не поддерживается; SSE4.2
+  не подтверждён; fingerprint `google/fugu/fugu:8.0.0`; microG —
+  prebuilt в system, не add-on.
+- Публикация OTA/ISO/JSON и push helper/manifest — только после
+  явного `PUBLISH`; в этом этапе ничего не опубликовано.
+
 ## 2026-11-15 — production на release-keys, сетевой OTA, YouTube payload sync
 
 - `intel` переведён на releasekey прямым flash в неактивный `_b`:

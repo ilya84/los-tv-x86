@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+	<!-- Remove first some AOSP/Lineage repos -->
+	<remove-project name="LineageOS/android" />
+	<remove-project name="LineageOS/android_art" />
+	<remove-project name="LineageOS/android_bionic" />
+    <remove-project name="LineageOS/android_bootable_recovery" />
+    <remove-project name="LineageOS/android_build_soong" />
+    <remove-project name="LineageOS/android_device_google_atv" />
+    <remove-project name="LineageOS/android_device_lineage_atv" />
+    <remove-project name="platform/external/drm_hwcomposer" />
+    <remove-project name="platform/external/libdrm" />
+    <remove-project name="platform/external/minigbm" />
+    <remove-project name="LineageOS/android_external_libncurses" />
+    <remove-project name="LineageOS/android_external_nano" />
+    <remove-project name="LineageOS/android_external_ntfs-3g" />
+    <remove-project name="LineageOS/android_external_mksh" />
+    <remove-project name="platform/external/toybox" />
+    <remove-project name="platform/external/mesa3d" />
+    <remove-project name="LineageOS/android_frameworks_av" />
+    <remove-project name="LineageOS/android_frameworks_base" />
+    <remove-project name="LineageOS/android_frameworks_native" />
+    <remove-project name="LineageOS/android_hardware_interfaces" />
+    <remove-project name="LineageOS/android_packages_apps_Settings" />
+    <remove-project name="LineageOS/android_packages_apps_TvSettings" />
+    <remove-project name="LineageOS/android_packages_modules_Bluetooth" />
+    <remove-project name="platform/packages/modules/NetworkStack" />
+    <remove-project name="platform/prebuilts/abi-dumps/vndk" />
+    <remove-project name="platform/system/apex" />
+    <remove-project name="LineageOS/android_system_core" />
+    <remove-project name="LineageOS/android_system_media" />
+    <remove-project name="platform/system/hardware/interfaces" />
+    <remove-project name="platform/system/linkerconfig" />
+    <remove-project name="LineageOS/android_system_vold" />
+    <remove-project name="LineageOS/android_vendor_lineage" />
+
+    <remove-project name="platform/external/gmmlib" />
+    <remove-project name="platform/external/libva" />
+    <remove-project name="platform/external/libva-utils" />
+    <remove-project name="platform/external/pciutils" />
+    <remove-project name="LineageOS/android_packages_apps_Catapult" />
+
+</manifest>

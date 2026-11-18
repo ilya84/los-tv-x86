@@ -1,11 +1,13 @@
 # Сборка
 
-Проверено 2026-11-15 на Debian 12 (`build-vm`, `kacnep@192.168.5.162`).
-Текущие стенды: `intel` (H81M-E, `_a` `1794703929`) — production,
-`e3000n` (AMD E2, `_a` `1794711917` bp4a/test, `_b` `1794703929` откат) —
-тестовый. Оба на release-keys, SELinux Enforcing. Для 23.2 используется
-release-конфиг **`bp4a`**; security patch — `2026-10-01` (последний для
-замороженной 23.2; более новый — только в 24.0/Android 17).
+Проверено 2026-11-18 на Debian 12 (`lineage-build`, `kacnep@192.168.5.162`).
+Текущие стенды: `intel` (H81M-E, `_a` `1794703929`, security `2025-11-05`) —
+production, `e3000n` (AMD E2, `_b` `1794960573`, security `2026-11-01`;
+`_a` `1794919314` — boot-only fallback) — тестовый. Оба на release-keys,
+SELinux Enforcing. Release-конфиг 23.2 — **`bp4a`**; security patch —
+**`2026-11-01`** (upstream `vendor/lineage` `1a4ed79a`, локальный pin
+`2026-10-01` удалён из series). Release-дерево — чистое
+`~/android/los-tv-23-clean` (`@los-23-tv-clean`).
 
 ## 0. Быстрый старт
 
@@ -14,20 +16,26 @@ release-конфиг **`bp4a`**; security patch — `2026-10-01` (последн
 git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
 
 # 2. Дерево + qcom-исключение ДО первого sync
-mkdir -p ~/android/los-tv-23 && cd ~/android/los-tv-23
-repo init -u https://github.com/ilya84/lineage_bass_android.git -b lineage-23.2
+mkdir -p ~/android/los-tv-23-clean && cd ~/android/los-tv-23-clean
+repo init -u https://github.com/ilya84/lineage_bass_android.git -b los-tv-x86-23.2
 mkdir -p .repo/local_manifests
 cp ~/los-tv-x86/manifest/05-remove-qcom.xml .repo/local_manifests/
 repo sync -j8
 
 # 3. Подготовить дерево одним скриптом
-~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23
+~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23-clean
 
 # 4. Собрать ISO
 source build/envsetup.sh
 lunch lineage_x86_64_tv bp4a userdebug
 m iso_img
 ```
+
+`los-tv-x86-23.2` — release-ветка/тег манифеста (upstream LineageOS +
+`05-modified.xml`). Ветка `lineage-23.2` остаётся исторической; на неё
+`repo init` даст старый manifest без upstream-переключения. Если ветка
+ещё не опубликована, используйте локальный `~/manifests-23.2` или
+`manifest.xml` из release bundle.
 
 `manifest/05-remove-qcom.xml` — 23.2-специфичный список из 42 qcom-проектов
 (94 пути). Для 24.0 его нужно перегенерировать: имена/пути могут измениться.
@@ -61,16 +69,25 @@ export SKIP_AG_DOWNLOADS=true
 ## 2. Манифест и исходники
 
 ```sh
-mkdir -p ~/android/los-tv-23 && cd ~/android/los-tv-23
-repo init -u https://github.com/ilya84/lineage_bass_android.git -b lineage-23.2
+mkdir -p ~/android/los-tv-23-clean && cd ~/android/los-tv-23-clean
+repo init -u https://github.com/ilya84/lineage_bass_android.git -b los-tv-x86-23.2
 mkdir -p .repo/local_manifests
 cp ~/los-tv-x86/manifest/05-remove-qcom.xml .repo/local_manifests/
 repo sync -j8
 ```
 
 `05-remove-qcom.xml` убирает ARM-платформенные qcom HAL’ы, которые не
-нужны x86-ТВ; без него чистый sync притащит их обратно. Для 24.0 список
-надо перегенерировать.
+нужны x86-ТВ; без него чистый sync притащит их обратно. Результат
+release-манифеста: **1123 проекта, qcom = 0**. Для 24.0 список надо
+перегенерировать.
+
+Manifest release-дерева: `default`/тег `los-tv-x86-23.2` (локальный
+`~/manifests-23.2` — `e6ec738`, 3 коммита впереди
+`origin/default` `03e103d`). 20 изменённых LineageOS-проектов
+переведены на remote `lineage-upstream` (`android-x86/05-modified.xml`),
+остальные — `los-tv-x86`/`ilya84`/`ag-github`; drmfb — `ag-github`.
+Полный resolved manifest — в release bundle (`manifest.xml`,
+`repo manifest -r`).
 
 В манифесте (`android-x86/04-custom.xml`) наши проекты:
 
@@ -85,13 +102,14 @@ repo sync -j8
 
 ```sh
 [ -d ~/los-tv-x86 ] || git clone https://github.com/ilya84/los-tv-x86 ~/los-tv-x86
-~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23
+~/los-tv-x86/scripts/bootstrap-tree.sh ~/android/los-tv-23-clean
 ```
 
 Скрипт:
 
-1. применяет `patches/series` (пропускает проекты, где уже есть коммит
-   `los-tv:`);
+1. применяет `patches/series` (per-patch skip: если `From <hash>` уже
+   является предком HEAD, пропускается только этот патч; остальные
+   применяются одним `git am -3`);
 2. скачивает недостающие APK по `scripts/prebuilts.lock` с проверкой sha256;
 3. проверяет/докачивает `bootable/aaropa/initrd_lib` и `iso/install.sfs`
    через `download.sh`;
@@ -109,15 +127,17 @@ repo sync -j8
 ## 4. Ручной путь (если не используется bootstrap)
 
 ```sh
-./scripts/apply-patches.sh ~/android/los-tv-23
+./scripts/apply-patches.sh ~/android/los-tv-23-clean
 ```
 
 Скрипт читает `patches/series` и применяет `git am -3` к `frameworks/base`,
 `system/core`, `bootable/recovery`, `build/soong`, `frameworks/av`,
-`external/*`, `TvSettings`, sepolicy, Bluetooth и т.д. Если проект уже
-содержит коммит `los-tv: …`, он пропускается. Патчи для
-`device/generic/x86_64_tv` и `bootable/aaropa` в серии есть, но при
-использовании наших форков не нужны.
+`external/*`, `TvSettings`, sepolicy, Bluetooth и т.д. Пропуск —
+per-patch: если коммит `From <hash>` уже в HEAD, пропускается только он;
+project-level skip по `los-tv:` удалён. `patches/series` — 56 строк,
+`vendor/lineage` pin отсутствует (upstream `2026-11-01`).
+Патчи для `device/generic/x86_64_tv` и `bootable/aaropa` в серии есть, но
+при использовании наших форков не нужны.
 
 Сторонние APK (в git их нет; bootstrap качает сам):
 
@@ -135,15 +155,21 @@ Play Store в базовый образ не входит; его APK польз
 ## 5. Сборка ISO
 
 ```sh
-cd ~/android/los-tv-23
+cd ~/android/los-tv-23-clean
 source build/envsetup.sh
+export SKIP_AG_DOWNLOADS=true
 lunch lineage_x86_64_tv bp4a userdebug
+get_build_var PLATFORM_SECURITY_PATCH      # 2026-11-01
+LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m systemimage
 LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json m iso_img
 ```
 
 Результат: `out/target/product/x86_64_tv/lineage-23.2-*-x86_64_tv.iso`
 (ISO-инсталлятор с GRUB/Calamares; имя возвращено к историческому
-LineageOS-формату вместо upstream `bass-lineout-*`).
+LineageOS-формату вместо upstream `bass-lineout-*`). Перед `m iso_img`
+проверьте top-level `system.img` — он должен быть 6 ГБ и содержать
+`ro.build.version.incremental=1794960573`, security `2026-11-01`,
+`ro.build.tags=release-keys`; иначе `m systemimage` обязателен.
 
 `install.sfs` (Calamares) собирается отдельно и патчится оверлеем из
 `installer/` (`installer/patch-install-sfs.sh`, режим `MODE=apply`). Перед
@@ -152,23 +178,35 @@ Bootstrap (раздел 3) делает это сам; после `m clean` до
 bootstrap — он вернёт симлинки `out/host/linux-x86/bin/meson` и
 `glslangValidator`.
 
+Финальный `install.sfs` (helper `b5a8b76`/тег `los-tv-x86-23.2`):
+`md5 0367c129de084573354300fed35cf5e2`, permissive во всех
+recovery/auto-addon пунктах `10_blissos`; `make-ab.conf` — system 8192,
+initrd 16, recovery 64 МиБ. Recovery permissive обеспечивается
+`system/core` patch `0004` (`IsRecoveryMode()`) + recovery `0003`/`0004`;
+normal boot остаётся Enforcing.
+
 ## 6. Сборка full OTA
 
 ```sh
-SKIP_AG_DOWNLOADS=true bash scripts/make-ota.sh
+TREE=/home/kacnep/android/los-tv-23-clean \
+LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json \
+SKIP_AG_DOWNLOADS=true \
+  bash ~/los-tv-x86/scripts/make-ota.sh
 ```
 
 Скрипт собирает `target-files-package`, генерирует полный A/B OTA
 (`out/target/product/x86_64_tv/lineage_x86_64_tv-ota-full.zip`), проверяет
 размер initrd (16 МиБ) и печатает хэши. Установка — `adb reboot sideload` +
-`adb sideload zip` либо через Updater по воздуху (см. §7).
+`adb sideload zip` либо через Updater по воздуху (см. §7). `TREE=`
+обязателен, если скрипт запускается из другого дерева/каталога.
 
 Release-конфиг скрипт берёт из `vendor/lineage/vars/aosp_target_release`
 (сейчас `bp4a`); переопределение — `LUNCH_VARIANT=trunk_staging`. Без
 `SKIP_AG_DOWNLOADS=true` `vendorsetup.sh` при `lunch` может обновить
 `ids/pci.ids`/`ids/usb.ids` и prebuilts из сети, поэтому для релизной
-сборки используйте `SKIP_AG_DOWNLOADS=true`. Текущая опубликованная
-сборка — `1794703929`; тестовая bp4a `1794711917` не публиковалась.
+сборки используйте `SKIP_AG_DOWNLOADS=true`. Текущая release-сборка
+23.2 — `1794960573` (security `2026-11-01`); опубликованная до неё —
+`1794703929`. Тестовые bp4a `1794711917`/`1794919314` не публиковались.
 
 Перед сборкой `make-ota.sh` вызывает `scripts/regen-build-props.sh`: он
 удаляет сгенерированные build.prop всех разделов (system/product/
@@ -307,29 +345,41 @@ OTA_KEY=$PWD/build/make/target/product/security/testkey bash scripts/make-ota.sh
 
 ## 10. Текущее состояние и ограничения
 
-Проверено 2026-11-15:
+Проверено 2026-11-18:
 
 - `intel` — production, `_a` build `1794703929` (release-keys,
-  security `2025-11-05`), `_b` `1794665098` — откат; Enforcing, RTP 5004,
-  add-on и YouTube 7.31.301, BT-пульт. Production ещё не переведён на bp4a.
-- `e3000n` — тестовый стенд, `_a` build `1794711917` (bp4a,
-  security `2026-10-01`), `_b` `1794703929` — откат; проверены OTA,
-  автоустановка, RTP 5006, YouTube payload sync.
-- Текущая опубликованная OTA — `1794703929` (1 783 656 108 Б, sha256
-  `660bf424…ac45`), ISO `lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso`
-  (build `1794665098`, md5 `c301caaf3f1298010adfee350ca5c897`).
-  Тестовая bp4a OTA `1794711917` собрана и проверена на `e3000n`, но
-  **не публиковалась**.
+  security `2025-11-05`), Enforcing, RTP 5004, add-on и YouTube 7.31.301,
+  BT-пульт. Production ещё не переведён на bp4a; не трогать в freeze.
+- `e3000n` — тестовый стенд, `_b` build `1794960573` (bp4a,
+  security `2026-11-01`), active; `_a` `1794919314` — boot-only fallback
+  (RTP error). Enforcing, RTP 5006, add-on auto, BT/пульт, recovery
+  sideload проверены. Рабочий `_b` `1794800321` сохранён вне слотов.
+- Release 23.2: OTA `1794960573` (1 758 217 372 Б, md5
+  `bcf8c3a099c18a29d924047a8c9612a4`, sha256
+  `f90f78fe…a55d`), security `2026-11-01`, releasekey, Enforcing;
+  ISO `lineage-23.2-20261118-UNOFFICIAL-x86_64_tv.iso` (см. release
+  bundle и `RELEASE.md`). Публикация — после `PUBLISH`.
 - Оба стенда: userdebug, SELinux Enforcing, release-keys, без шифрования
-  данных; `system.img` ~5,8 ГБ.
+  данных; `system.img` — 6,0 ГБ (content margin ~2,26 ГБ).
+- Recovery permissive (system/core `0004` + recovery `0003`/`0004`);
+  normal boot Enforcing. Installer передаёт
+  `androidboot.selinux=permissive` для recovery-пунктов.
+- Чистая установка ISO: Calamares завершается, GPT/слоты/GRUB
+  создаются; первый boot Android в QEMU/OVMF не показателен
+  (виртуальный GPU: `avc denied` graphics.allocator, system_server без
+  `activity`) — нужен тест на реальном железе.
 - Обязательность SSE4.2 не подтверждена (в работе).
 - Видео-путь для radeon: H.264 ≤ 720p через `c2.ffmpeg.h264` + VA-API.
 - WMS↔InputDispatcher focus desync после OTA на bp4a `1794711917`
   не воспроизвёлся на стабильном boot; первый boot после OTA ещё
   требует отдельной проверки. Workaround `wm size ±1` в сборке остаётся.
 - Delta OTA для add-on-устройств не поддерживается — публикуйте full.
-- Максимальный security patch для замороженной 23.2 — `2026-10-01`;
-  более новый появится только с 24.0/Android 17.
+- Security 23.2 — `2026-11-01` (upstream `vendor/lineage` `1a4ed79a`);
+  pin `2026-10-01` удалён. `trunk_staging` (`2025-11-05`) не использовать.
+- `ro.build.fingerprint` остаётся `google/fugu/fugu:8.0.0` (унаследовано);
+  `user`-сборка и аудит release-флагов — отдельная задача.
+- microG — prebuilt `/system/app/MicroGGmsCore` в базовом образе, не
+  add-on; add-on ставит Play Store/YouTube/Widevine/NDK.
 
 `recovery$SLOT.img` на x86-схеме — это padded `ramdisk-recovery.img`
 (gzip cpio), а не `recovery.img`; иначе recovery уходит в kernel panic.

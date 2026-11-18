@@ -46,13 +46,11 @@ over HTTPS with the LineageOS Updater.
 
 ## Обновления
 
-Текущая опубликованная OTA — `1794703929`:
+Текущая release-сборка 23.2 — `1794960573` (2026-11-18):
 
-- OTA: <https://atv.kacnep.ru/ota/lineage_x86_64_tv-ota-full-1794703929.zip>
+- OTA: <https://atv.kacnep.ru/ota/lineage_x86_64_tv-ota-full-1794960573.zip>
 - JSON для Updater: <https://atv.kacnep.ru/x86_64_tv.json>
-- ISO: <https://atv.kacnep.ru/iso/lineage-23.2-20261114-UNOFFICIAL-x86_64_tv.iso>
-  (build `1794665098`; последний собранный ISO, без YouTube payload sync
-  из `1794703929` — свежий ISO ещё не пересобирался)
+- ISO: <https://atv.kacnep.ru/iso/lineage-23.2-20261118-UNOFFICIAL-x86_64_tv.iso>
 
 OTA подписана собственными `release-keys` (CN `los-tv-x86`), payload
 `initrd,kernel,ramdisk-recovery,system`, сервер отдаёт `Range: bytes`.
@@ -61,16 +59,23 @@ OTA подписана собственными `release-keys` (CN `los-tv-x86`)
 `/ota/*` с `immutable`, поэтому каждая сборка публикуется под уникальным
 именем `...-<incremental>.zip`.
 
+Security patch — `2026-11-01`. `system.img` — 6,0 ГБ (фактический образ
+5 999 996 928 Б, запас ~2,26 ГБ внутри ext4). Recovery по умолчанию
+permissive (`system/core/init/selinux.cpp`: `IsRecoveryMode()`), normal
+boot остаётся Enforcing; installer дополнительно передаёт
+`androidboot.selinux=permissive` для recovery-пунктов GRUB.
+
 ## Железо (в данный момент)
 
 | Стенд | Железо | Роль | Сборка |
 |---|---|---|---|
-| `intel` | ASRock H81M-E, Intel Haswell | production, постоянная эксплуатация | `_b` `1794665098`, release-keys |
-| `e3000n` | Gigabyte E3000N, AMD Kabini | тестовый стенд | `_b` `1794703929`, release-keys |
+| `intel` | ASRock H81M-E, Intel Haswell | production, постоянная эксплуатация | `_a` `1794703929`, release-keys |
+| `e3000n` | Gigabyte E3000N, AMD Kabini | тестовый стенд | `_b` `1794960573`, release-keys |
 
 Оба — x86_64, Android 16 / SDK 36, `userdebug`, `ro.debuggable=0`,
 SELinux Enforcing, 720p. Проверка правок — сначала на `e3000n`, затем на
-`intel`.
+`intel`. `e3000n` `_a` — `1794919314` boot-only fallback (RTP error);
+рабочий откат `1794800321` сохранён вне слотов.
 
 ## Загрузка
 
@@ -84,18 +89,19 @@ GRUB (UEFI и BIOS), разделы `esp`, `cdrom` (boot + data), `system_a/b`,
 |---|---|
 | Дерево устройства | `device/generic/x86_64_tv` (форк BlissOS x86_64_tablet) |
 | Initrd/установщик | `bootable/aaropa` |
-| Манифест | `lineage_bass_android` (ветка `lineage-23.2`) |
-| Патчи к остальным проектам | `patches/` + `scripts/apply-patches.sh` |
+| Манифест | `lineage_bass_android`, ветка/тег `los-tv-x86-23.2` (upstream LineageOS; старая `lineage-23.2` сохранена) |
+| Патчи к остальным проектам | `patches/` + `scripts/apply-patches.sh`; release-тег helper `los-tv-x86-23.2` |
 | Оверлей Calamares | `installer/` |
 
 ## Статус и ограничения
 
 - Сборка **userdebug**, SELinux **Enforcing** проверен на `e3000n`
-  (AMD, 2026-11-05) и Intel H81M (2026-11-07); текущие сборки —
-  release-keys, `ro.build.tags=release-keys`.
-- Шифрование данных не настроено. Уровень патчей безопасности — на момент
-  синхронизации LineageOS 23.2.
-- `system.img` ~5,8 ГБ (near size limit); состав пакетов расширять осторожно.
+  (AMD, 2026-11-18) и Intel H81M (2026-11-07); текущие сборки —
+  release-keys, `ro.build.tags=release-keys`; security patch `2026-11-01`.
+- Шифрование данных не настроено. Recovery работает permissive
+  (исключение только для recovery; normal boot — Enforcing).
+- `system.img` — 6,0 ГБ (фактический образ 5 999 996 928 Б, content
+  margin ~2,26 ГБ; file-vs-slot ~3 КиБ по конструкции образа).
 - Обязательность SSE4.2 не подтверждена окончательно; поддержка другого
   железа — в работе.
 - После OTA возможен рассинхрон WMS↔InputDispatcher (ANR «no focused
