@@ -26,6 +26,7 @@ device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0006-los-tv-raise-syst
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0007-los-tv-wait-for-HDA-codecs-before-restarting-audiose.patch
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0008-los-tv-always-restart-audioserver-after-HDA-rebind.patch
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0009-los-tv-qemu-virtio-gpu-runtime.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0010-los-tv-pci-ids-update.patch
 device/google/atv	patches/device/google/atv/0001-los-tv-map-Home-key-to-HOME-on-ATV.patch
 device/lineage/sepolicy	patches/device/lineage/sepolicy/0001-los-tv-gmscore_app-drop-apk_verity_prop-access.patch
 external/XMP-Toolkit-SDK	patches/external/XMP-Toolkit-SDK/0001-los-tv-vendor_available-for-xmp-toolkit-libs.patch
