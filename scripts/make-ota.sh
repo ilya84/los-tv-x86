@@ -33,7 +33,9 @@ set -o pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 TREE=${TREE:-$HOME/android/los-tv-23}
-PRODUCT_OUT="$TREE/out/target/product/x86_64_tv"
+OUT_DIR=${OUT_DIR:-$TREE/out}
+export OUT_DIR
+PRODUCT_OUT="$OUT_DIR/target/product/x86_64_tv"
 LUNCH_TARGET=lineage_x86_64_tv
 # Release train ("bp4a", "trunk_staging", ...).  Follow LineageOS' own
 # target release unless the caller overrides it explicitly:
@@ -110,12 +112,12 @@ if ! grep -q '^lineage.updater.uri=' "$PRODUCT_OUT/system/build.prop"; then
   echo "!! LOS_TV_OTA_URI=https://atv.kacnep.ru/x86_64_tv.json."
 fi
 
-TF="$TREE/out/target/product/x86_64_tv/obj/PACKAGING/target_files_intermediates/${LUNCH_TARGET}-target_files.zip"
-OTA="$TREE/out/target/product/x86_64_tv/${LUNCH_TARGET}-ota-full.zip"
+TF="$OUT_DIR/target/product/x86_64_tv/obj/PACKAGING/target_files_intermediates/${LUNCH_TARGET}-target_files.zip"
+OTA="$OUT_DIR/target/product/x86_64_tv/${LUNCH_TARGET}-ota-full.zip"
 [ -f "$TF" ] || { echo "!! нет target-files: $TF"; exit 1; }
 
 echo "### 2/3 хост-инструмент"
-if [ ! -x "$TREE/out/host/linux-x86/bin/ota_from_target_files" ]; then
+if [ ! -x "$OUT_DIR/host/linux-x86/bin/ota_from_target_files" ]; then
   m ota_from_target_files || { echo "!! ota tool failed"; exit 1; }
 fi
 
@@ -154,7 +156,7 @@ fi
 [ -f "$OTA_KEY.pk8" ] || { echo "!! нет ключа OTA: $OTA_KEY.pk8"; exit 1; }
 echo "OTA key: $OTA_KEY"
 
-"$TREE/out/host/linux-x86/bin/ota_from_target_files" -v -k "$OTA_KEY" \
+"$OUT_DIR/host/linux-x86/bin/ota_from_target_files" -v -k "$OTA_KEY" \
   --extracted_input_target_files "$WORK" \
   "$TF" "$OTA"
 

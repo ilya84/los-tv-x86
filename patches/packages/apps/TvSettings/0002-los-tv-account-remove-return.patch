@@ -1,0 +1,90 @@
+From 7e76a41a6d1f510fb001097f2beef0a16295ba11 Mon Sep 17 00:00:00 2001
+From: ilya84 <kacnep.0000@gmail.com>
+Date: Thu, 19 Nov 2026 11:53:52 +1000
+Subject: [PATCH] ui: return to accounts list after removal
+
+---
+ .../accounts/AccountSyncActivity.java         | 15 +++++++++++++
+ .../accounts/AccountSyncFragment.java         | 22 +++++++++++++++++++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/Settings/src/com/android/tv/settings/accounts/AccountSyncActivity.java b/Settings/src/com/android/tv/settings/accounts/AccountSyncActivity.java
+index ef29847bb..867b0d3a1 100644
+--- a/Settings/src/com/android/tv/settings/accounts/AccountSyncActivity.java
++++ b/Settings/src/com/android/tv/settings/accounts/AccountSyncActivity.java
+@@ -51,6 +51,21 @@ public class AccountSyncActivity extends TvSettingsActivity {
+                 .newSettingsFragment(AccountSyncFragment.class.getName(), getArguments(account));
+     }
+ 
++    @Override
++    protected void onResume() {
++        super.onResume();
++        String accountName = getIntent().getStringExtra(EXTRA_ACCOUNT);
++        if (TextUtils.isEmpty(accountName)) {
++            return;
++        }
++        for (Account account : AccountManager.get(this).getAccounts()) {
++            if (account.name.equals(accountName)) {
++                return;
++            }
++        }
++        finish();
++    }
++
+     private Bundle getArguments(Account account) {
+         final Bundle b = new Bundle(1);
+         b.putParcelable(ARG_ACCOUNT, account);
+diff --git a/Settings/src/com/android/tv/settings/accounts/AccountSyncFragment.java b/Settings/src/com/android/tv/settings/accounts/AccountSyncFragment.java
+index 7b3ee423d..71288f551 100644
+--- a/Settings/src/com/android/tv/settings/accounts/AccountSyncFragment.java
++++ b/Settings/src/com/android/tv/settings/accounts/AccountSyncFragment.java
+@@ -40,12 +40,14 @@ import android.text.format.DateUtils;
+ import android.util.Log;
+ 
+ import androidx.annotation.Keep;
++import androidx.fragment.app.Fragment;
+ import androidx.preference.Preference;
+ import androidx.preference.PreferenceGroup;
+ 
+ import com.android.settingslib.accounts.AuthenticatorHelper;
+ import com.android.tv.settings.R;
+ import com.android.tv.settings.SettingsPreferenceFragment;
++import com.android.tv.twopanelsettings.TwoPanelSettingsFragment;
+ import com.google.android.collect.Lists;
+ 
+ import java.util.ArrayList;
+@@ -280,11 +282,31 @@ public class AccountSyncFragment extends SettingsPreferenceFragment implements
+         return false;
+     }
+ 
++    private void closeAccountDetail() {
++        if (getActivity() == null) {
++            return;
++        }
++        Fragment callback = getCallbackFragment();
++        if (callback instanceof TwoPanelSettingsFragment) {
++            ((TwoPanelSettingsFragment) callback).navigateBack();
++            return;
++        }
++        if (getParentFragmentManager().getBackStackEntryCount() > 0) {
++            getParentFragmentManager().popBackStack();
++        } else {
++            getActivity().finish();
++        }
++    }
++
+     @Override
+     public void onAccountsUpdate(UserHandle userHandle) {
+         if (!isResumed()) {
+             return;
+         }
++        if (!accountExists(mAccount)) {
++            closeAccountDetail();
++            return;
++        }
+         onSyncStateUpdated();
+     }
+ 
+-- 
+2.39.5
+

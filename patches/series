@@ -25,6 +25,7 @@ device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0005-los-tv-rebind-HDA
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0006-los-tv-raise-system-image-to-6.0-GB-for-release-marg.patch
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0007-los-tv-wait-for-HDA-codecs-before-restarting-audiose.patch
 device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0008-los-tv-always-restart-audioserver-after-HDA-rebind.patch
+device/generic/x86_64_tv	patches/device/generic/x86_64_tv/0009-los-tv-qemu-virtio-gpu-runtime.patch
 device/google/atv	patches/device/google/atv/0001-los-tv-map-Home-key-to-HOME-on-ATV.patch
 device/lineage/sepolicy	patches/device/lineage/sepolicy/0001-los-tv-gmscore_app-drop-apk_verity_prop-access.patch
 external/XMP-Toolkit-SDK	patches/external/XMP-Toolkit-SDK/0001-los-tv-vendor_available-for-xmp-toolkit-libs.patch
@@ -43,6 +44,7 @@ hardware/interfaces	patches/hardware/interfaces/0002-los-tv-disable-hwcomposer-2
 hardware/lineage/compat	patches/hardware/lineage/compat/0001-los-tv-disable-Android.bp.patch
 kernel/x86/zenith	patches/kernel/x86/zenith/0001-los-tv-zenith-kernel-memfd-ashmem-shim-KernelSU-off.patch
 packages/apps/TvSettings	patches/packages/apps/TvSettings/0001-los-tv-TV-settings-BLE-remotes-x86-display-resolutio.patch
+packages/apps/TvSettings	patches/packages/apps/TvSettings/0002-los-tv-account-remove-return.patch
 packages/apps/Updater	patches/packages/apps/Updater/0001-los-tv-auto-install-TV-settings-focus-configurable-c.patch
 packages/modules/Bluetooth	patches/packages/modules/Bluetooth/0001-los-tv-HID-support-remotes-with-many-reports-64.patch
 packages/modules/StatsD	patches/packages/modules/StatsD/0001-los-tv-libstatspull_static-for-platform-statsd_flags.patch

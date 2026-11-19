@@ -17,8 +17,9 @@
 set -u
 
 TREE=${TREE:-$HOME/android/los-tv-23}
-PRODUCT_OUT=${PRODUCT_OUT:-$TREE/out/target/product/x86_64_tv}
-SOONG_INTERMEDIATES="$TREE/out/soong/.intermediates/build/soong"
+OUT_DIR=${OUT_DIR:-$TREE/out}
+PRODUCT_OUT=${PRODUCT_OUT:-$OUT_DIR/target/product/x86_64_tv}
+SOONG_INTERMEDIATES="$OUT_DIR/soong/.intermediates/build/soong"
 
 parts=(system product system_ext vendor odm vendor_dlkm odm_dlkm system_dlkm ramdisk)
 removed=0
